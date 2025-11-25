@@ -13,13 +13,17 @@ go test -coverprofile=coverage.out ./... > /dev/null 2>&1
 echo "📊 Core Business Logic Coverage (Testable Code):"
 echo "─────────────────────────────────────────────────────────────"
 
-# Individual package coverage
-echo "  📦 config package:    $(go tool cover -func=coverage.out | grep 'internal/config/config.go' | grep 'total:' | awk '{print $3}')"
-echo "  📦 storage package:   $(go tool cover -func=coverage.out | grep 'internal/storage/storage.go' | grep 'total:' | awk '{print $3}')"
-echo "  📦 timeparse package: $(go tool cover -func=coverage.out | grep 'internal/timeparse/timeparse.go' | grep 'total:' | awk '{print $3}')"
+# Individual package coverage - calculate average per package
+CONFIG_AVG=$(go tool cover -func=coverage.out | grep 'internal/config/' | awk '{gsub("%","",$NF); sum+=$NF; count++} END {if(count>0) printf "%.1f%%", sum/count}')
+STORAGE_AVG=$(go tool cover -func=coverage.out | grep 'internal/storage/' | awk '{gsub("%","",$NF); sum+=$NF; count++} END {if(count>0) printf "%.1f%%", sum/count}')
+TIMEPARSE_AVG=$(go tool cover -func=coverage.out | grep 'internal/timeparse/' | awk '{gsub("%","",$NF); sum+=$NF; count++} END {if(count>0) printf "%.1f%%", sum/count}')
+
+echo "  📦 config package:    $CONFIG_AVG"
+echo "  📦 storage package:   $STORAGE_AVG"
+echo "  📦 timeparse package: $TIMEPARSE_AVG"
 
 # Calculate average of core packages
-CORE_AVG=$(go tool cover -func=coverage.out | grep -E "(config|storage|timeparse)" | grep "\.go:" | awk '{gsub("%","",$3); sum+=$3; count++} END {if(count>0) printf "%.1f%%", sum/count}')
+CORE_AVG=$(go tool cover -func=coverage.out | grep -E "internal/(config|storage|timeparse)/" | awk '{gsub("%","",$NF); sum+=$NF; count++} END {if(count>0) printf "%.1f%%", sum/count}')
 echo ""
 echo "  🎯 Core Average:      $CORE_AVG"
 echo "─────────────────────────────────────────────────────────────"
