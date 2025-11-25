@@ -44,3 +44,23 @@ shortcuts:
 # Optional: Database path (defaults to ~/.tasklog/tasklog.db)
 database:
   path: ""
+
+# Optional: Slack integration for break notifications
+slack:
+  bot_token: "xoxb-your-slack-bot-token"
+  channel_id: "C1234567890"  # Channel ID for break messages
+
+# Optional: Define break types for quick break registration
+breaks:
+  - name: "lunch"
+    duration: 60
+    emoji: ":fork_and_knife:"
+  
+  - name: "prayer"
+    duration: 15
+    emoji: ":pray:"
+  
+  - name: "coffee"
+    duration: 10
+    emoji: ":coffee:"
+

@@ -16,6 +16,8 @@ type Config struct {
 	Labels    LabelsConfig    `yaml:"labels"`
 	Shortcuts []ShortcutEntry `yaml:"shortcuts"`
 	Database  DatabaseConfig  `yaml:"database"`
+	Slack     SlackConfig     `yaml:"slack"`
+	Breaks    []BreakEntry    `yaml:"breaks"`
 }
 
 // JiraConfig contains Jira API configuration (all fields required)
@@ -47,6 +49,19 @@ type ShortcutEntry struct {
 // DatabaseConfig contains SQLite database configuration (optional)
 type DatabaseConfig struct {
 	Path string `yaml:"path"` // Path to SQLite database file (optional, defaults to ~/.tasklog/tasklog.db)
+}
+
+// SlackConfig contains Slack integration configuration (optional)
+type SlackConfig struct {
+	BotToken  string `yaml:"bot_token"`  // Slack bot token (optional)
+	ChannelID string `yaml:"channel_id"` // Channel ID for break messages (optional)
+}
+
+// BreakEntry represents a predefined break type (optional)
+type BreakEntry struct {
+	Name     string `yaml:"name"`     // Break name (e.g., "lunch", "prayer")
+	Duration int    `yaml:"duration"` // Duration in minutes
+	Emoji    string `yaml:"emoji"`    // Emoji for Slack status (optional)
 }
 
 // Load loads configuration from the config file
@@ -127,6 +142,16 @@ func (c *Config) IsLabelAllowed(label string) bool {
 		}
 	}
 	return false
+}
+
+// GetBreak returns a break by name
+func (c *Config) GetBreak(name string) (*BreakEntry, bool) {
+	for _, breakEntry := range c.Breaks {
+		if breakEntry.Name == name {
+			return &breakEntry, true
+		}
+	}
+	return nil, false
 }
 
 // getConfigDir returns the configuration directory path

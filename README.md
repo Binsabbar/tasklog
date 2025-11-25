@@ -9,6 +9,8 @@ An interactive CLI tool for tracking time on Jira tasks with seamless integratio
 - ⏱️ **Flexible Time Entry**: Support for multiple time formats (2h 30m, 2.5h, 150m)
 - 🏷️ **Label Management**: Configure and use labels for categorizing work
 - ⚡ **Shortcuts**: Define shortcuts for repetitive tasks (perfect for cronjobs)
+- ⏸️ **Break Management**: Register breaks with automatic Slack status updates and channel notifications
+- 💬 **Slack Integration**: Update status and post messages when taking breaks (optional)
 - 💾 **Local Cache**: SQLite database keeps track of all entries locally
 - 🔄 **Dual Sync**: Automatically logs time to both Jira and Tempo
 - 📊 **Daily Summary**: View your logged time for the day
@@ -21,6 +23,7 @@ An interactive CLI tool for tracking time on Jira tasks with seamless integratio
 - Go 1.21 or higher
 - Access to Jira Cloud with API token
 - Tempo API token
+- (Optional) Slack bot token for break notifications
 
 ### Build from Source
 
@@ -124,19 +127,124 @@ shortcuts:
 # Optional: Database path (defaults to ~/.tasklog/tasklog.db)
 database:
   path: ""
+
+# Optional: Slack integration for break notifications
+slack:
+  bot_token: "xoxb-your-slack-bot-token"
+  channel_id: "C1234567890"  # Channel ID for break messages
+
+# Optional: Define break types for quick break registration
+breaks:
+  - name: "lunch"
+    duration: 60
+    emoji: ":fork_and_knife:"
+  
+  - name: "prayer"
+    duration: 15
+    emoji: ":pray:"
+  
+  - name: "coffee"
+    duration: 10
+    emoji: ":coffee:"
 ```
 
 ### Getting API Tokens
 
-**Jira API Token:**
+#### Jira Configuration
+
+**Finding Your Jira URL:**
+- Your Jira Cloud URL is typically: `https://your-domain.atlassian.net`
+- Example: `https://mycompany.atlassian.net`
+
+**Getting Jira API Token:**
 1. Go to https://id.atlassian.com/manage-profile/security/api-tokens
 2. Click "Create API token"
-3. Give it a name and copy the token
+3. Give it a descriptive name (e.g., "Tasklog CLI")
+4. Copy the token immediately (you won't be able to see it again)
 
-**Tempo API Token:**
-1. Go to Tempo > Settings > API Integration
-2. Create a new token
+**Your Jira Username:**
+- Use the email address associated with your Jira account
+- Example: `your-email@example.com`
+
+**Project Key:**
+- This filters tasks to a specific Jira project
+- Found in task IDs (e.g., `PROJ-123` → project key is `PROJ`)
+- Or check your Jira project settings
+
+#### Tempo Configuration
+
+**Getting Tempo API Token:**
+1. In Jira, go to **Tempo** in the top navigation
+2. Click **Settings** (gear icon)
+3. Select **API Integration** from the left sidebar
+4. Click **New Token**
+5. Give it a name (e.g., "Tasklog CLI")
+6. Copy the generated token
+
+**Note:** Tempo must be installed in your Jira workspace for time tracking.
 3. Copy the token
+
+**Slack Bot Token (Optional for break notifications):**
+1. Go to https://api.slack.com/apps
+2. Create a new app or select existing
+3. Go to "OAuth & Permissions"
+4. Add bot token scopes: `chat:write`, `users.profile:write`
+5. Install app to workspace
+6. Copy the "Bot User OAuth Token" (starts with `xoxb-`)
+7. Get channel ID by right-clicking channel > View channel details
+
+### Slack Setup (Optional)
+
+Slack integration is required only if you want to use the `tasklog break` command to automatically update your Slack status and post break notifications to a channel.
+
+#### Creating a Slack App
+
+1. **Visit Slack API Dashboard**
+   - Go to https://api.slack.com/apps
+   - Click "Create New App"
+   - Choose "From scratch"
+   - Give it a name (e.g., "Tasklog Break Notifications")
+   - Select your workspace
+
+2. **Configure OAuth & Permissions**
+   - In the left sidebar, click "OAuth & Permissions"
+   - Scroll down to "Scopes" > "Bot Token Scopes"
+   - Add the following scopes:
+     - `chat:write` - Post messages to channels
+     - `users.profile:write` - Update your own status
+
+3. **Install App to Workspace**
+   - Scroll to the top of the "OAuth & Permissions" page
+   - Click "Install to Workspace"
+   - Review permissions and click "Allow"
+
+4. **Get Your Bot Token**
+   - After installation, you'll see "Bot User OAuth Token"
+   - Copy this token (starts with `xoxb-`)
+   - Add it to your `~/.tasklog/config.yaml` under `slack.bot_token`
+
+5. **Get Channel ID**
+   - In Slack, right-click the channel where you want break notifications
+   - Select "View channel details"
+   - Scroll down to find the Channel ID (e.g., `C1234567890`)
+   - Add it to your `~/.tasklog/config.yaml` under `slack.channel_id`
+
+6. **Invite Bot to Channel**
+   - In the Slack channel, type: `/invite @YourBotName`
+   - This allows the bot to post messages
+
+#### Testing Slack Integration
+
+After configuration, test it with:
+
+```bash
+tasklog break coffee
+```
+
+You should see:
+- Your Slack status updated with coffee emoji
+- A message posted in the configured channel
+- Status automatically cleared after the break duration
 
 ## Usage
 
@@ -190,6 +298,36 @@ tasklog log -t PROJ-123 -d 2h30m -l bug-fix
 See today's logged time:
 
 ```bash
+tasklog summary
+```
+
+### Register a Break
+
+Take a break and automatically update Slack status and post a message:
+
+```bash
+# Take a lunch break (updates Slack status and posts message)
+tasklog break lunch
+
+# Take a prayer break
+tasklog break prayer
+
+# Take a coffee break
+tasklog break coffee
+```
+
+This will:
+1. Update your Slack status with the break emoji and duration
+2. Post a formatted message in the configured channel (e.g., "🔔 Taking a *lunch break* — Back in 60 minutes at *2:30 PM*")
+3. Set Slack status to auto-expire after the break duration
+4. Display confirmation with return time
+
+**Example Slack Message:**
+```
+🔔 Taking a lunch break — Back in 60 minutes at 2:30 PM
+```
+
+**Note:** Slack integration is optional. If not configured, the break will be registered locally but Slack won't be updated.
 tasklog summary
 ```
 

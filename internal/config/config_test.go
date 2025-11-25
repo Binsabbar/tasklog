@@ -324,3 +324,36 @@ shortcuts:
 		t.Errorf("expected 1 shortcut, got %d", len(config.Shortcuts))
 	}
 }
+
+func TestConfig_GetBreak(t *testing.T) {
+	config := &Config{
+		Breaks: []BreakEntry{
+			{Name: "lunch", Duration: 60, Emoji: ":fork_and_knife:"},
+			{Name: "prayer", Duration: 15, Emoji: ":pray:"},
+			{Name: "coffee", Duration: 10, Emoji: ":coffee:"},
+		},
+	}
+
+	tests := []struct {
+		name         string
+		breakName    string
+		wantFound    bool
+		wantDuration int
+	}{
+		{"existing break", "lunch", true, 60},
+		{"another break", "prayer", true, 15},
+		{"non-existent break", "vacation", false, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			breakEntry, found := config.GetBreak(tt.breakName)
+			if found != tt.wantFound {
+				t.Errorf("expected found=%v, got %v", tt.wantFound, found)
+			}
+			if found && breakEntry.Duration != tt.wantDuration {
+				t.Errorf("expected duration %d, got %d", tt.wantDuration, breakEntry.Duration)
+			}
+		})
+	}
+}
