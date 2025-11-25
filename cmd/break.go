@@ -88,20 +88,24 @@ func runBreak(cmd *cobra.Command, args []string) {
 	// Calculate return time
 	returnTime := time.Now().Add(time.Duration(breakEntry.Duration) * time.Minute)
 
-	// Set Slack status
+	// Set Slack status with 5 extra minutes buffer for auto-clear
 	statusText := fmt.Sprintf("On %s break (back at %s)", breakName, returnTime.Format("3:04 PM"))
 	statusEmoji := breakEntry.Emoji
 	if statusEmoji == "" {
 		statusEmoji = ":pause_button:"
 	}
 
-	err = slackClient.SetStatus(statusText, statusEmoji, breakEntry.Duration)
+	// Add 5 minutes buffer to auto-clear the status
+	statusExpirationMinutes := breakEntry.Duration + 5
+
+	err = slackClient.SetStatus(statusText, statusEmoji, statusExpirationMinutes)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to update Slack status")
 	} else {
 		log.Info().
 			Str("status", statusText).
 			Str("emoji", statusEmoji).
+			Int("expiration_minutes", statusExpirationMinutes).
 			Msg("Slack status updated")
 	}
 
