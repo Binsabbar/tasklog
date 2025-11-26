@@ -27,8 +27,8 @@ type TimeEntry struct {
 	CreatedAt        time.Time `json:"created_at"`
 	SyncedToJira     bool      `json:"synced_to_jira"`
 	SyncedToTempo    bool      `json:"synced_to_tempo"`
-	JiraWorklogID    string    `json:"jira_worklog_id"`
-	TempoWorklogID   string    `json:"tempo_worklog_id"`
+	JiraWorklogID    *string   `json:"jira_worklog_id"`
+	TempoWorklogID   *string   `json:"tempo_worklog_id"`
 }
 
 // NewStorage creates a new storage instance

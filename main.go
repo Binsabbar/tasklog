@@ -12,7 +12,13 @@ import (
 func main() {
 	// Configure zerolog
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
-	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+
+	// Check for debug log level from environment
+	if os.Getenv("TASKLOG_LOG_LEVEL") == "debug" {
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	} else {
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	}
 
 	// Execute root command
 	if err := cmd.Execute(); err != nil {

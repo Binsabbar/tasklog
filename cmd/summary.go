@@ -5,7 +5,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"tasklog/internal/jira"
 	"tasklog/internal/storage"
+	"tasklog/internal/tempo"
 )
 
 var summaryCmd = &cobra.Command{
@@ -26,6 +28,15 @@ func runSummary(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Tempo is required for summary
+	if !cfg.Tempo.Enabled || cfg.Tempo.APIToken == "" {
+		return fmt.Errorf("tempo must be enabled and configured to use summary command")
+	}
+
+	// Initialize clients
+	jiraClient := jira.NewClient(cfg.Jira.URL, cfg.Jira.Username, cfg.Jira.APIToken, cfg.Jira.ProjectKey)
+	tempoClient := tempo.NewClient(cfg.Tempo.APIToken)
+
 	// Initialize storage
 	store, err := storage.NewStorage(cfg.Database.Path)
 	if err != nil {
@@ -33,5 +44,5 @@ func runSummary(cmd *cobra.Command, args []string) error {
 	}
 	defer store.Close()
 
-	return showTodaySummary(store)
+	return showTodaySummary(store, jiraClient, tempoClient, cfg)
 }

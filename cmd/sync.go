@@ -69,7 +69,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 				failureCount++
 			} else {
 				entry.SyncedToJira = true
-				entry.JiraWorklogID = worklog.ID
+				entry.JiraWorklogID = &worklog.ID
 				fmt.Println("  ✓ Synced to Jira")
 			}
 		}
@@ -99,7 +99,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 						failureCount++
 					} else {
 						entry.SyncedToTempo = true
-						entry.TempoWorklogID = fmt.Sprintf("%d", tempoWorklog.TempoWorklogID)
+						tempoID := fmt.Sprintf("%d", tempoWorklog.TempoWorklogID); entry.TempoWorklogID = &tempoID
 						fmt.Println("  ✓ Synced to Tempo")
 					}
 				}

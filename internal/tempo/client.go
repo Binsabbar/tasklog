@@ -54,6 +54,9 @@ type WorklogResponse struct {
 	StartTime        string `json:"startTime"`
 	Description      string `json:"description"`
 	CreatedAt        string `json:"createdAt"`
+	Author           struct {
+		AccountID string `json:"accountId"`
+	} `json:"author"`
 }
 
 // AddWorklog adds a worklog entry to Tempo
@@ -107,17 +110,19 @@ func (c *Client) AddWorklog(issueID, authorAccountID string, timeSpentSeconds in
 }
 
 // GetWorklogs retrieves worklogs for a date range
-func (c *Client) GetWorklogs(from, to time.Time) ([]WorklogResponse, error) {
+func (c *Client) GetWorklogs(from, to time.Time, authorAccountID string) ([]WorklogResponse, error) {
 	log.Debug().
 		Str("from", from.Format("2006-01-02")).
 		Str("to", to.Format("2006-01-02")).
+		Str("author", authorAccountID).
 		Msg("Fetching worklogs from Tempo")
 
-	// Use Tempo API v4 endpoint
+	// Use Tempo API v4 endpoint with author filter
 	endpoint := fmt.Sprintf(
-		"https://api.tempo.io/4/worklogs?from=%s&to=%s",
+		"https://api.tempo.io/4/worklogs?from=%s&to=%s&author=%s",
 		from.Format("2006-01-02"),
 		to.Format("2006-01-02"),
+		authorAccountID,
 	)
 
 	var response struct {
@@ -128,14 +133,26 @@ func (c *Client) GetWorklogs(from, to time.Time) ([]WorklogResponse, error) {
 		return nil, fmt.Errorf("failed to fetch worklogs from Tempo: %w", err)
 	}
 
-	log.Debug().Int("count", len(response.Results)).Msg("Retrieved worklogs from Tempo")
-	return response.Results, nil
+	// Filter by author client-side as an extra safeguard
+	filtered := []WorklogResponse{}
+	for _, wl := range response.Results {
+		if wl.Author.AccountID == authorAccountID {
+			filtered = append(filtered, wl)
+		}
+	}
+
+	log.Debug().
+		Int("total", len(response.Results)).
+		Int("filtered", len(filtered)).
+		Msg("Retrieved worklogs from Tempo")
+
+	return filtered, nil
 }
 
-// GetTodayWorklogs retrieves today's worklogs
-func (c *Client) GetTodayWorklogs() ([]WorklogResponse, error) {
+// GetTodayWorklogs retrieves today's worklogs for a specific author
+func (c *Client) GetTodayWorklogs(authorAccountID string) ([]WorklogResponse, error) {
 	today := time.Now()
-	return c.GetWorklogs(today, today)
+	return c.GetWorklogs(today, today, authorAccountID)
 }
 
 // doRequest performs an HTTP request to the Tempo API

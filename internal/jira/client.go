@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -43,9 +42,15 @@ type Issue struct {
 
 // IssueFields represents Jira issue fields
 type IssueFields struct {
-	Summary  string      `json:"summary"`
-	Status   IssueStatus `json:"status"`
-	Assignee *IssueUser  `json:"assignee"`
+	Summary  string       `json:"summary"`
+	Status   IssueStatus  `json:"status"`
+	Assignee *IssueUser   `json:"assignee"`
+	Worklog  *WorklogList `json:"worklog,omitempty"`
+}
+
+// WorklogList represents the worklog field in issue response
+type WorklogList struct {
+	Worklogs []Worklog `json:"worklogs"`
 }
 
 // IssueStatus represents Jira issue status
@@ -208,27 +213,83 @@ func (c *Client) AddWorklog(issueKey string, timeSpentSeconds int, started time.
 func (c *Client) GetTodayWorklogs() ([]Worklog, error) {
 	log.Debug().Msg("Fetching today's worklogs")
 
-	// Get issues with worklogs updated today
-	jql := "worklogAuthor = currentUser() AND worklogDate = startOfDay()"
+	// Get issues updated recently - JQL worklogDate filter may not be reliable
+	jql := "assignee = currentUser() AND updated >= -7d"
 	if c.projectKey != "" {
 		jql = fmt.Sprintf("%s AND project = %s", jql, c.projectKey)
 	}
 	jql = fmt.Sprintf("%s ORDER BY updated DESC", jql)
 
-	params := url.Values{}
-	params.Add("jql", jql)
-	params.Add("fields", "worklog")
-	params.Add("maxResults", "100")
+	log.Debug().Str("jql", jql).Msg("Using JQL query")
 
-	endpoint := fmt.Sprintf("%s/rest/api/3/search?%s", c.baseURL, params.Encode())
+	endpoint := fmt.Sprintf("%s/rest/api/3/search/jql", c.baseURL)
+	payload := map[string]interface{}{
+		"jql":        jql,
+		"fields":     []string{"worklog", "summary", "key"},
+		"maxResults": 100,
+	}
 
 	var result SearchResult
-	if err := c.doRequest("GET", endpoint, nil, &result); err != nil {
+	if err := c.doRequest("POST", endpoint, payload, &result); err != nil {
 		return nil, fmt.Errorf("failed to fetch today's issues: %w", err)
 	}
 
-	// Extract worklogs from issues (simplified - in production you'd need to fetch worklogs separately)
+	log.Debug().
+		Int("total_issues", result.Total).
+		Int("returned_issues", len(result.Issues)).
+		Msg("Search result")
+
+	// Get current user to filter worklogs
+	currentUser, err := c.GetCurrentUser()
+	if err != nil {
+		log.Warn().Err(err).Msg("Could not fetch current user, will include all worklogs")
+	}
+
+	// Extract worklogs from issues
 	worklogs := []Worklog{}
+	today := time.Now().Format("2006-01-02")
+
+	for _, issue := range result.Issues {
+		log.Debug().
+			Str("issue_key", issue.Key).
+			Bool("has_worklog", issue.Fields.Worklog != nil).
+			Msg("Processing issue")
+
+		if issue.Fields.Worklog == nil {
+			continue
+		}
+
+		log.Debug().
+			Str("issue_key", issue.Key).
+			Int("worklog_count", len(issue.Fields.Worklog.Worklogs)).
+			Msg("Issue has worklogs")
+
+		// Filter worklogs to only include today's entries by current user
+		for _, wl := range issue.Fields.Worklog.Worklogs {
+			// Check if this worklog is from today
+			isToday := strings.HasPrefix(wl.Started, today)
+
+			// Check if this worklog is by current user
+			isByCurrentUser := true
+			if currentUser != nil && wl.Author != nil {
+				isByCurrentUser = wl.Author.AccountID == currentUser.AccountID
+			}
+
+			log.Debug().
+				Str("issue_key", issue.Key).
+				Str("started", wl.Started).
+				Str("today", today).
+				Bool("is_today", isToday).
+				Bool("is_by_current_user", isByCurrentUser).
+				Msg("Checking worklog")
+
+			if isToday && isByCurrentUser {
+				// Add issue context to worklog
+				wl.IssueID = issue.ID
+				worklogs = append(worklogs, wl)
+			}
+		}
+	}
 
 	log.Debug().Int("count", len(worklogs)).Msg("Retrieved today's worklogs")
 	return worklogs, nil

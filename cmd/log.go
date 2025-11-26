@@ -253,7 +253,7 @@ func runLog(cmd *cobra.Command, args []string) error {
 		fmt.Printf("⚠ Failed to log to Jira: %v\n", err)
 	} else {
 		entry.SyncedToJira = true
-		entry.JiraWorklogID = worklog.ID
+		entry.JiraWorklogID = &worklog.ID
 		fmt.Println("✓ Logged to Jira")
 	}
 
@@ -273,7 +273,8 @@ func runLog(cmd *cobra.Command, args []string) error {
 				fmt.Printf("⚠ Failed to log to Tempo: %v\n", err)
 			} else {
 				entry.SyncedToTempo = true
-				entry.TempoWorklogID = fmt.Sprintf("%d", tempoWorklog.TempoWorklogID)
+				tempoID := fmt.Sprintf("%d", tempoWorklog.TempoWorklogID)
+				entry.TempoWorklogID = &tempoID
 				fmt.Println("✓ Logged to Tempo")
 			}
 		}
@@ -289,51 +290,107 @@ func runLog(cmd *cobra.Command, args []string) error {
 
 	// Show today's summary
 	fmt.Println()
-	if err := showTodaySummary(store); err != nil {
+	if err := showTodaySummary(store, jiraClient, tempoClient, cfg); err != nil {
 		log.Error().Err(err).Msg("Failed to show summary")
 	}
 
 	return nil
 }
 
-func showTodaySummary(store *storage.Storage) error {
-	total, err := store.GetTodayTotalSeconds()
-	if err != nil {
-		return err
-	}
-
-	entries, err := store.GetTodayEntries()
-	if err != nil {
-		return err
-	}
-
+func showTodaySummary(store *storage.Storage, jiraClient *jira.Client, tempoClient *tempo.Client, cfg *config.Config) error {
 	fmt.Println("═══════════════════════════════════════════")
-	fmt.Printf("Today's Summary (%d entries)\n", len(entries))
+	fmt.Println("📊 Today's Time Tracking Summary")
 	fmt.Println("═══════════════════════════════════════════")
 
-	if len(entries) > 0 {
-		for _, entry := range entries {
+	// Get current user for filtering
+	currentUser, err := jiraClient.GetCurrentUser()
+	if err != nil {
+		return fmt.Errorf("failed to get current user: %w", err)
+	}
+
+	// Fetch from Tempo as source of truth
+	log.Debug().Msg("Fetching today's worklogs from Tempo")
+	tempoWorklogs, tempoErr := tempoClient.GetTodayWorklogs(currentUser.AccountID)
+	if tempoErr != nil {
+		return fmt.Errorf("failed to fetch Tempo worklogs: %w", tempoErr)
+	}
+
+	// Get local entries
+	localEntries, err := store.GetTodayEntries()
+	if err != nil {
+		return fmt.Errorf("failed to get local entries: %w", err)
+	}
+
+	// Calculate totals
+	var tempoTotal, localTotal int
+
+	for _, wl := range tempoWorklogs {
+		tempoTotal += wl.TimeSpentSeconds
+	}
+
+	for _, entry := range localEntries {
+		localTotal += entry.TimeSpentSeconds
+	}
+
+	// Display Tempo worklogs (source of truth)
+	fmt.Printf("\n✓ Tempo Worklogs (%d entries): %s\n", len(tempoWorklogs), timeparse.Format(tempoTotal))
+	if len(tempoWorklogs) > 0 {
+		for _, wl := range tempoWorklogs {
+			fmt.Printf("  %s - %-10s [%-12s] %s\n",
+				wl.StartTime,
+				timeparse.Format(wl.TimeSpentSeconds),
+				wl.Description,
+				wl.IssueKey,
+			)
+		}
+	}
+
+	// Display local cache section
+	fmt.Printf("\n📦 Local Cache (%d entries): %s\n", len(localEntries), timeparse.Format(localTotal))
+	if len(localEntries) > 0 {
+		for _, entry := range localEntries {
 			syncStatus := ""
+			syncInfo := ""
+
 			if entry.SyncedToJira && entry.SyncedToTempo {
 				syncStatus = "✓"
-			} else if entry.SyncedToJira || entry.SyncedToTempo {
+				syncInfo = "Synced"
+			} else if entry.SyncedToJira && !entry.SyncedToTempo {
 				syncStatus = "⚠"
+				syncInfo = "Jira only"
+			} else if !entry.SyncedToJira && entry.SyncedToTempo {
+				syncStatus = "⚠"
+				syncInfo = "Tempo only"
 			} else {
 				syncStatus = "✗"
+				syncInfo = "Not synced"
 			}
 
-			fmt.Printf("%s %s - %-10s [%s] %s\n",
+			fmt.Printf("  %s %s - %-10s [%-12s] %s (%s)\n",
 				syncStatus,
 				entry.Started.Format("15:04"),
 				entry.TimeSpent,
 				entry.Label,
 				entry.IssueKey,
+				syncInfo,
 			)
 		}
 	}
 
-	fmt.Println("───────────────────────────────────────────")
-	fmt.Printf("Total: %s\n", timeparse.Format(total))
+	fmt.Println("\n═══════════════════════════════════════════")
+
+	// Show comparison between Tempo and local data
+	if len(localEntries) > 0 {
+		diff := tempoTotal - localTotal
+		if diff == 0 {
+			fmt.Println("✓ Local cache matches Tempo")
+		} else if diff > 0 {
+			fmt.Printf("⚠️  Tempo has %s more than local cache\n", timeparse.Format(diff))
+		} else {
+			fmt.Printf("⚠️  Local cache has %s not synced to Tempo\n", timeparse.Format(-diff))
+		}
+	}
+
 	fmt.Println("═══════════════════════════════════════════")
 
 	return nil
