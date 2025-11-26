@@ -1,35 +1,44 @@
 # Binaries
-tasklog
+/vault-sync
 *.exe
+*.exe~
 *.dll
 *.so
 *.dylib
 
-# Test binary
-*.test
+# Build directories
+/bin/
+/build/
+/dist/
 
-# Output of the go coverage tool
-*.out
+# Go modules
+/go.work
+/go.work.sum
 
-# Dependency directories
-vendor/
-
-# IDE
-.idea/
+# IDE/editor files
 .vscode/
+.idea/
 *.swp
 *.swo
-*~
 
-# OS
+# OS files
 .DS_Store
+Thumbs.db
 
-# Config files (contains sensitive data)
-config.yaml
-.tasklog/
+# Configs and secrets (if generated)
+/*.env
+*.local.yaml
+*.local.json
 
-# SQLite database
-*.db
-*.db-journal
-*.db-shm
-*.db-wal
+# Ignore test output
+*.out
+
+# Ignore coverage files
+coverage.*
+*.coverprofile
+
+# Ignore user-specific config
+*.user
+
+vault-keys.txt
+sample-config-docker.yaml
