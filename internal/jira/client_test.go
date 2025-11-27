@@ -1,6 +1,9 @@
 package jira
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -117,5 +120,176 @@ func TestWorklogStructure(t *testing.T) {
 
 	if worklog.TimeSpentSeconds != 7200 {
 		t.Error("time spent seconds not set correctly")
+	}
+}
+
+func TestGetInProgressIssues_DefaultStatus(t *testing.T) {
+	// Create mock server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/api/3/search/jql" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != "POST" {
+			t.Errorf("expected POST request, got %s", r.Method)
+		}
+
+		// Parse request body to verify JQL
+		var payload map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("failed to decode request body: %v", err)
+		}
+
+		jql, ok := payload["jql"].(string)
+		if !ok {
+			t.Fatal("jql not found in request")
+		}
+
+		// Verify default status is "In Progress"
+		expectedJQL := "assignee = currentUser() AND status = 'In Progress' AND project = TEST ORDER BY updated DESC"
+		if jql != expectedJQL {
+			t.Errorf("expected JQL:\n%s\ngot:\n%s", expectedJQL, jql)
+		}
+
+		// Return mock response
+		response := SearchResult{
+			Issues: []Issue{
+				{
+					Key: "TEST-123",
+					Fields: IssueFields{
+						Summary: "Test issue",
+						Status:  IssueStatus{Name: "In Progress"},
+					},
+				},
+			},
+			Total: 1,
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "user@example.com", "token", "TEST")
+	issues, err := client.GetInProgressIssues(nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(issues) != 1 {
+		t.Errorf("expected 1 issue, got %d", len(issues))
+	}
+
+	if issues[0].Key != "TEST-123" {
+		t.Errorf("expected issue key TEST-123, got %s", issues[0].Key)
+	}
+}
+
+func TestGetInProgressIssues_MultipleStatuses(t *testing.T) {
+	// Create mock server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Parse request body to verify JQL
+		var payload map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("failed to decode request body: %v", err)
+		}
+
+		jql, ok := payload["jql"].(string)
+		if !ok {
+			t.Fatal("jql not found in request")
+		}
+
+		// Verify multiple statuses are included
+		expectedJQL := "assignee = currentUser() AND status IN ('In Progress', 'In Review', 'Testing') AND project = TEST ORDER BY updated DESC"
+		if jql != expectedJQL {
+			t.Errorf("expected JQL:\n%s\ngot:\n%s", expectedJQL, jql)
+		}
+
+		// Return mock response
+		response := SearchResult{
+			Issues: []Issue{
+				{
+					Key: "TEST-123",
+					Fields: IssueFields{
+						Summary: "In Progress issue",
+						Status:  IssueStatus{Name: "In Progress"},
+					},
+				},
+				{
+					Key: "TEST-456",
+					Fields: IssueFields{
+						Summary: "In Review issue",
+						Status:  IssueStatus{Name: "In Review"},
+					},
+				},
+			},
+			Total: 2,
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "user@example.com", "token", "TEST")
+	statuses := []string{"In Progress", "In Review", "Testing"}
+	issues, err := client.GetInProgressIssues(statuses)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(issues) != 2 {
+		t.Errorf("expected 2 issues, got %d", len(issues))
+	}
+}
+
+func TestGetInProgressIssues_SingleCustomStatus(t *testing.T) {
+	// Create mock server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Parse request body to verify JQL
+		var payload map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("failed to decode request body: %v", err)
+		}
+
+		jql, ok := payload["jql"].(string)
+		if !ok {
+			t.Fatal("jql not found in request")
+		}
+
+		// Verify single custom status
+		expectedJQL := "assignee = currentUser() AND status = 'In Review' AND project = TEST ORDER BY updated DESC"
+		if jql != expectedJQL {
+			t.Errorf("expected JQL:\n%s\ngot:\n%s", expectedJQL, jql)
+		}
+
+		// Return mock response
+		response := SearchResult{
+			Issues: []Issue{
+				{
+					Key: "TEST-789",
+					Fields: IssueFields{
+						Summary: "Review issue",
+						Status:  IssueStatus{Name: "In Review"},
+					},
+				},
+			},
+			Total: 1,
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "user@example.com", "token", "TEST")
+	statuses := []string{"In Review"}
+	issues, err := client.GetInProgressIssues(statuses)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(issues) != 1 {
+		t.Errorf("expected 1 issue, got %d", len(issues))
+	}
+
+	if issues[0].Key != "TEST-789" {
+		t.Errorf("expected issue key TEST-789, got %s", issues[0].Key)
 	}
 }

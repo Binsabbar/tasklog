@@ -22,10 +22,11 @@ type Config struct {
 
 // JiraConfig contains Jira API configuration (all fields required)
 type JiraConfig struct {
-	URL        string `yaml:"url"`         // Jira instance URL (required)
-	Username   string `yaml:"username"`    // Jira username/email (required)
-	APIToken   string `yaml:"api_token"`   // Jira API token (required)
-	ProjectKey string `yaml:"project_key"` // Project key to filter tasks (required)
+	URL          string   `yaml:"url"`           // Jira instance URL (required)
+	Username     string   `yaml:"username"`      // Jira username/email (required)
+	APIToken     string   `yaml:"api_token"`     // Jira API token (required)
+	ProjectKey   string   `yaml:"project_key"`   // Project key to filter tasks (required)
+	TaskStatuses []string `yaml:"task_statuses"` // Task statuses to include (optional, defaults to ["In Progress"])
 }
 
 // TempoConfig contains Tempo API configuration (optional)

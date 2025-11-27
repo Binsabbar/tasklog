@@ -132,7 +132,7 @@ func runLog(cmd *cobra.Command, args []string) error {
 	} else {
 		// Interactive task selection
 		log.Debug().Msg("Fetching in-progress tasks")
-		inProgressIssues, err := jiraClient.GetInProgressIssues()
+		inProgressIssues, err := jiraClient.GetInProgressIssues(cfg.Jira.TaskStatuses)
 		if err != nil {
 			return fmt.Errorf("failed to fetch in-progress tasks: %w", err)
 		}

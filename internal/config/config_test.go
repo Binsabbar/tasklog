@@ -283,6 +283,9 @@ jira:
   username: "user@example.com"
   api_token: "token123"
   project_key: "PROJ"
+  task_statuses:
+    - "In Progress"
+    - "In Review"
 
 tempo:
   api_token: "tempo-token"
@@ -319,12 +322,62 @@ shortcuts:
 		t.Errorf("expected project key PROJ, got %s", config.Jira.ProjectKey)
 	}
 
+	if len(config.Jira.TaskStatuses) != 2 {
+		t.Errorf("expected 2 task statuses, got %d", len(config.Jira.TaskStatuses))
+	}
+
+	if len(config.Jira.TaskStatuses) > 0 && config.Jira.TaskStatuses[0] != "In Progress" {
+		t.Errorf("expected first task status to be 'In Progress', got %s", config.Jira.TaskStatuses[0])
+	}
+
+	if len(config.Jira.TaskStatuses) > 1 && config.Jira.TaskStatuses[1] != "In Review" {
+		t.Errorf("expected second task status to be 'In Review', got %s", config.Jira.TaskStatuses[1])
+	}
+
 	if len(config.Labels.AllowedLabels) != 2 {
 		t.Errorf("expected 2 labels, got %d", len(config.Labels.AllowedLabels))
 	}
 
 	if len(config.Shortcuts) != 1 {
 		t.Errorf("expected 1 shortcut, got %d", len(config.Shortcuts))
+	}
+}
+
+func TestLoadConfig_WithoutTaskStatuses(t *testing.T) {
+	// Test that config loads successfully when task_statuses is not specified
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	configWithoutStatuses := `
+jira:
+  url: "https://example.atlassian.net"
+  username: "user@example.com"
+  api_token: "token123"
+  project_key: "PROJ"
+
+tempo:
+  api_token: "tempo-token"
+`
+	err := os.WriteFile(configPath, []byte(configWithoutStatuses), 0600)
+	if err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+
+	os.Setenv("TASKLOG_CONFIG", configPath)
+	defer os.Unsetenv("TASKLOG_CONFIG")
+
+	config, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error loading config without task_statuses: %v", err)
+	}
+
+	if config.Jira.URL != "https://example.atlassian.net" {
+		t.Errorf("expected jira url to be loaded correctly")
+	}
+
+	// TaskStatuses should be empty/nil when not specified
+	if len(config.Jira.TaskStatuses) != 0 {
+		t.Errorf("expected 0 task statuses when not specified, got %d", len(config.Jira.TaskStatuses))
 	}
 }
 

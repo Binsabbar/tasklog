@@ -1,0 +1,3 @@
+kind: added
+body: 'jira: allow configuring multiple task statuses to include when fetching tasks (e.g., ''In Progress'', ''In Review''). Defaults to ''In Progress'' if not specified.'
+time: 2025-11-27T23:13:14.880875+03:00

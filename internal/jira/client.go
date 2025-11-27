@@ -83,10 +83,28 @@ type Worklog struct {
 }
 
 // GetInProgressIssues retrieves issues in progress for the current user
-func (c *Client) GetInProgressIssues() ([]Issue, error) {
+// The statuses parameter allows filtering by multiple status values (e.g., ["In Progress", "In Review"])
+func (c *Client) GetInProgressIssues(statuses []string) ([]Issue, error) {
 	log.Debug().Msg("Fetching in-progress issues")
 
-	jql := "assignee = currentUser() AND status = 'In Progress'"
+	// Default to "In Progress" if no statuses provided
+	if len(statuses) == 0 {
+		statuses = []string{"In Progress"}
+	}
+
+	// Build status filter
+	var statusFilter string
+	if len(statuses) == 1 {
+		statusFilter = fmt.Sprintf("status = '%s'", statuses[0])
+	} else {
+		statusFilters := make([]string, len(statuses))
+		for i, status := range statuses {
+			statusFilters[i] = fmt.Sprintf("'%s'", status)
+		}
+		statusFilter = fmt.Sprintf("status IN (%s)", strings.Join(statusFilters, ", "))
+	}
+
+	jql := fmt.Sprintf("assignee = currentUser() AND %s", statusFilter)
 	if c.projectKey != "" {
 		jql = fmt.Sprintf("%s AND project = %s", jql, c.projectKey)
 	}

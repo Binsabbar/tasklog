@@ -7,6 +7,10 @@ jira:
   username: "your-email@example.com"
   api_token: "your-jira-api-token"
   project_key: "PROJ"  # Project key to filter tasks
+  # Optional: Task statuses to include when fetching tasks (defaults to ["In Progress"])
+  task_statuses:
+    - "In Progress"
+    - "In Review"
 
 # Optional: Tempo configuration (only needed if logging separately to Tempo)
 # If your Jira uses Tempo for worklog tracking, leave this disabled

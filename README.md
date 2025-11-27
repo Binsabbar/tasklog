@@ -6,7 +6,7 @@ An interactive CLI tool for tracking time on Jira tasks with seamless integratio
 
 ## Features
 
-- 🎯 **Interactive Task Selection**: List your in-progress tasks or search for any task
+- 🎯 **Interactive Task Selection**: List your in-progress tasks (configurable statuses) or search for any task
 - 🔍 **Project Filtering**: Optionally filter tasks to a specific Jira project
 - ⏱️ **Flexible Time Entry**: Support for multiple time formats (2h 30m, 2.5h, 150m)
 - 🏷️ **Label Management**: Configure and use labels for categorizing work
@@ -116,6 +116,9 @@ jira:
   username: "your-email@example.com"
   api_token: "your-jira-api-token"
   project_key: "PROJ"  # Project key to filter tasks (required)
+  task_statuses:
+    - "In Progress"
+    - "In Review"
 
 # Optional: Tempo configuration (only if logging separately to Tempo)
 # If your Jira uses Tempo for worklog tracking, leave this disabled
@@ -198,6 +201,18 @@ breaks:
 - This filters tasks to a specific Jira project
 - Found in task IDs (e.g., `PROJ-123` → project key is `PROJ`)
 - Or check your Jira project settings
+
+**Task Statuses (Optional):**
+- By default, tasklog shows tasks with status "In Progress"
+- You can configure additional statuses to include (e.g., "In Review", "Testing")
+- Add to config:
+  ```yaml
+  jira:
+    task_statuses:
+      - "In Progress"
+      - "In Review"
+  ```
+- If not specified, defaults to `["In Progress"]`
 
 ### Tempo Configuration
 
