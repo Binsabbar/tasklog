@@ -11,6 +11,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const defaultBreakEmoji = ":double_vertical_bar:"
+
 var breakCmd = &cobra.Command{
 	Use:   "break [break-name]",
 	Short: "Register a break and update Slack status",
@@ -96,7 +98,7 @@ func runBreak(cmd *cobra.Command, args []string) {
 	statusText := fmt.Sprintf("On %s break (back at %s)", breakName, returnTime.Format("3:04 PM"))
 	statusEmoji := breakEntry.Emoji
 	if statusEmoji == "" {
-		statusEmoji = ":double_vertical_bar:"
+		statusEmoji = defaultBreakEmoji
 	}
 
 	// Add 5 minutes buffer to auto-clear the status
@@ -107,18 +109,18 @@ func runBreak(cmd *cobra.Command, args []string) {
 		log.Error().Err(err).Str("emoji", statusEmoji).Msg("Failed to update Slack status")
 
 		// If the error is about invalid emoji and we're not already using the default, retry with default
-		if statusEmoji != ":double_vertical_bar:" &&
+		if statusEmoji != defaultBreakEmoji &&
 			(err.Error() == "slack API error: profile_status_set_failed_not_valid_emoji" ||
 				err.Error() == "slack API error: profile_status_set_failed_not_emoji_syntax" ||
 				err.Error() == "slack API error: invalid_emoji") {
 			log.Warn().Msg("Invalid emoji detected, retrying with default emoji")
-			err = slackClient.SetStatus(statusText, ":double_vertical_bar:", statusExpirationMinutes)
+			err = slackClient.SetStatus(statusText, defaultBreakEmoji, statusExpirationMinutes)
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to update Slack status with default emoji")
 			} else {
 				log.Info().
 					Str("status", statusText).
-					Str("emoji", ":double_vertical_bar:").
+					Str("emoji", defaultBreakEmoji).
 					Int("expiration_minutes", statusExpirationMinutes).
 					Msg("Slack status updated with default emoji")
 				statusUpdated = true
@@ -136,7 +138,7 @@ func runBreak(cmd *cobra.Command, args []string) {
 	// Post message to channel
 	emojiForMessage := breakEntry.Emoji
 	if emojiForMessage == "" {
-		emojiForMessage = ":double_vertical_bar:"
+		emojiForMessage = defaultBreakEmoji
 	}
 	message := fmt.Sprintf("🔔 Taking a %s *%s break* — Back in %d minutes at *%s*",
 		emojiForMessage,
