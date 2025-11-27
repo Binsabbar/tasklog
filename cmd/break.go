@@ -88,11 +88,15 @@ func runBreak(cmd *cobra.Command, args []string) {
 	// Calculate return time
 	returnTime := time.Now().Add(time.Duration(breakEntry.Duration) * time.Minute)
 
+	// Track what succeeded
+	statusUpdated := false
+	messagePosted := false
+
 	// Set Slack status with 5 extra minutes buffer for auto-clear
 	statusText := fmt.Sprintf("On %s break (back at %s)", breakName, returnTime.Format("3:04 PM"))
 	statusEmoji := breakEntry.Emoji
 	if statusEmoji == "" {
-		statusEmoji = ":pause_button:"
+		statusEmoji = ":double_vertical_bar:"
 	}
 
 	// Add 5 minutes buffer to auto-clear the status
@@ -100,17 +104,42 @@ func runBreak(cmd *cobra.Command, args []string) {
 
 	err = slackClient.SetStatus(statusText, statusEmoji, statusExpirationMinutes)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to update Slack status")
+		log.Error().Err(err).Str("emoji", statusEmoji).Msg("Failed to update Slack status")
+
+		// If the error is about invalid emoji and we're not already using the default, retry with default
+		if statusEmoji != ":double_vertical_bar:" &&
+			(err.Error() == "slack API error: profile_status_set_failed_not_valid_emoji" ||
+				err.Error() == "slack API error: profile_status_set_failed_not_emoji_syntax" ||
+				err.Error() == "slack API error: invalid_emoji") {
+			log.Warn().Msg("Invalid emoji detected, retrying with default emoji")
+			err = slackClient.SetStatus(statusText, ":double_vertical_bar:", statusExpirationMinutes)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to update Slack status with default emoji")
+			} else {
+				log.Info().
+					Str("status", statusText).
+					Str("emoji", ":double_vertical_bar:").
+					Int("expiration_minutes", statusExpirationMinutes).
+					Msg("Slack status updated with default emoji")
+				statusUpdated = true
+			}
+		}
 	} else {
 		log.Info().
 			Str("status", statusText).
 			Str("emoji", statusEmoji).
 			Int("expiration_minutes", statusExpirationMinutes).
 			Msg("Slack status updated")
+		statusUpdated = true
 	}
 
 	// Post message to channel
-	message := fmt.Sprintf("🔔 Taking a *%s break* — Back in %d minutes at *%s*",
+	emojiForMessage := breakEntry.Emoji
+	if emojiForMessage == "" {
+		emojiForMessage = ":double_vertical_bar:"
+	}
+	message := fmt.Sprintf("🔔 Taking a %s *%s break* — Back in %d minutes at *%s*",
+		emojiForMessage,
 		breakName,
 		breakEntry.Duration,
 		returnTime.Format("3:04 PM"))
@@ -123,10 +152,20 @@ func runBreak(cmd *cobra.Command, args []string) {
 			Str("channel", cfg.Slack.ChannelID).
 			Str("message", message).
 			Msg("Message posted to Slack")
+		messagePosted = true
 	}
 
-	// Display success message
+	// Display success message with accurate status
 	fmt.Printf("✅ Break registered: %s (%d minutes)\n", breakName, breakEntry.Duration)
 	fmt.Printf("📅 Return time: %s\n", returnTime.Format("3:04 PM"))
-	fmt.Printf("💬 Slack updated: Status set and message posted\n")
+
+	if statusUpdated && messagePosted {
+		fmt.Printf("💬 Slack updated: Status set and message posted\n")
+	} else if messagePosted {
+		fmt.Printf("💬 Slack updated: Message posted (status not updated)\n")
+	} else if statusUpdated {
+		fmt.Printf("💬 Slack updated: Status set (message failed)\n")
+	} else {
+		fmt.Printf("⚠️  Slack update failed\n")
+	}
 }
