@@ -14,51 +14,74 @@ An interactive CLI tool for tracking time on Jira tasks with seamless integratio
 - ⏸️ **Break Management**: Register breaks with automatic Slack status updates and channel notifications
 - 💬 **Slack Integration**: Update status and post messages when taking breaks (optional)
 - 💾 **Local Cache**: SQLite database keeps track of all entries locally
-- 🔄 **Dual Sync**: Automatically logs time to both Jira and Tempo
-- 📊 **Daily Summary**: View your logged time for the day
+- 📤 **Jira Sync**: Automatically logs time to Jira (which syncs to Tempo if installed)
+- 📊 **Daily Summary**: View your logged time from Tempo (source of truth)
 - 🔁 **Sync Recovery**: Retry failed syncs with the sync command
 
 ## Installation
 
 ### Prerequisites
 
-- Go 1.21 or higher
+- Go 1.21 or higher (only for building from source)
 - Access to Jira Cloud with API token
 - Tempo API token
 - (Optional) Slack bot token for break notifications
 
+### Download Pre-built Binary
+
+Download the latest release for your platform from the [Releases page](https://github.com/binsabbar/tasklog/releases):
+
+```bash
+# Example for macOS (replace with your platform and version)
+curl -LO https://github.com/binsabbar/tasklog/releases/download/v1.0.0/tasklog_v1.0.0_darwin_amd64
+chmod +x tasklog_v1.0.0_darwin_amd64
+sudo mv tasklog_v1.0.0_darwin_amd64 /usr/local/bin/tasklog
+```
+
+Available platforms: Linux and macOS (amd64 and arm64)
+
 ### Build from Source
 
 ```bash
-git clone <repository-url>
-cd timetracking
-go build -o tasklog
-sudo mv tasklog /usr/local/bin/  # Optional: Install globally
+git clone https://github.com/binsabbar/tasklog.git
+cd tasklog
+make go-build    # Build the binary to bin/tasklog
 ```
 
-Or use the Makefile:
+Or build manually:
 
 ```bash
-make build    # Build the binary
-make install  # Build and install to /usr/local/bin
-make test     # Run tests
+go build -o bin/tasklog
+```
+
+### Using Docker
+
+```bash
+# Pull the latest image
+docker pull ghcr.io/binsabbar/tasklog:latest
+
+# Run with your config and database mounted
+docker run -v ~/.tasklog:/home/tasklog/.tasklog ghcr.io/binsabbar/tasklog:latest log
+
+# Or run with specific config file
+docker run \
+  -v ~/.tasklog/config.yaml:/home/tasklog/.tasklog/config.yaml \
+  -v ~/.tasklog/tasklog.db:/home/tasklog/.tasklog/tasklog.db \
+  ghcr.io/binsabbar/tasklog:latest log
 ```
 
 ## Quick Start
 
-1. **Build and install:**
-   ```bash
-   make install
-   ```
+1. **Download (or Build) the binary**
 
 2. **Initialize configuration:**
    ```bash
-   tasklog init
+   ./bin/tasklog init
    ```
 
 3. **Edit config file with your credentials:**
    ```bash
-   nano ~/.tasklog/config.yaml
+   vim ~/.tasklog/config.yaml
    ```
    - Add your Jira URL, username, and API token
    - Add your Tempo API token
@@ -66,7 +89,7 @@ make test     # Run tests
 
 4. **Start logging time:**
    ```bash
-   tasklog log
+   ./bin/tasklog log
    ```
 
 That's it! The tool will guide you through the rest.
@@ -135,7 +158,7 @@ database:
 
 # Optional: Slack integration for break notifications
 slack:
-  bot_token: "xoxb-your-slack-bot-token"
+  user_token: "xoxp-your-slack-user-token"  # User OAuth Token (not Bot Token)
   channel_id: "C1234567890"  # Channel ID for break messages
 
 # Optional: Define break types for quick break registration
@@ -153,9 +176,9 @@ breaks:
     emoji: ":coffee:"
 ```
 
-### Getting API Tokens
+## Getting API Tokens
 
-#### Jira Configuration
+### Jira Configuration
 
 **Finding Your Jira URL:**
 - Your Jira Cloud URL is typically: `https://your-domain.atlassian.net`
@@ -176,35 +199,40 @@ breaks:
 - Found in task IDs (e.g., `PROJ-123` → project key is `PROJ`)
 - Or check your Jira project settings
 
-#### Tempo Configuration (Optional)
+### Tempo Configuration
 
-**Important:** Tempo configuration is only needed if you want to log worklogs separately to both Jira AND Tempo. 
+**Important:** Tasklog logs time **only to Jira**. When Tempo is installed in your Jira workspace, Jira automatically creates corresponding Tempo worklogs.
 
-If your Jira instance uses Tempo as the worklog tracker, you should leave `tempo.enabled: false` in your config. Worklogs logged to Jira will automatically appear in Tempo.
+The Tempo API token is **required** because:
+- The `summary` command fetches logged time **only from Tempo** (not Jira)
+- Tempo serves as the source of truth for your time tracking data
+- This allows accurate comparison between local cache and actual logged time
 
-**When to enable Tempo:**
-- You need separate worklog entries in both Jira and Tempo
-- Your organization has a specific workflow requiring dual logging
-
-**Getting Tempo API Token (only if enabling):**
+**Getting Tempo API Token:**
 1. In Jira, go to **Tempo** in the top navigation
 2. Click **Settings** (gear icon)
 3. Select **API Integration** from the left sidebar
 4. Click **New Token**
 5. Give it a name (e.g., "Tasklog CLI")
-6. Copy the generated token
+6. Copy the generated token and add it to your config
 
-**Note:** Tempo must be installed in your Jira workspace for time tracking.
-3. Copy the token
+**Configuration Options:**
+- `tempo.enabled: true` - Tasklog will fetch and display Tempo worklogs in the summary
+- `tempo.enabled: false` - Tasklog will not fetch Tempo data (you won't see summary information)
 
-**Slack Bot Token (Optional for break notifications):**
+**Note:** Tempo must be installed in your Jira workspace for time tracking to work properly
+
+**Slack User Token (Optional for break notifications):**
 1. Go to https://api.slack.com/apps
 2. Create a new app or select existing
 3. Go to "OAuth & Permissions"
-4. Add bot token scopes: `chat:write`, `users.profile:write`
-5. Install app to workspace
-6. Copy the "Bot User OAuth Token" (starts with `xoxb-`)
-7. Get channel ID by right-clicking channel > View channel details
+4. Add **Bot Token Scopes**: `chat:write`
+5. Add **User Token Scopes**: `users.profile:write`
+6. Install/Reinstall app to workspace
+7. Copy the **"User OAuth Token"** (starts with `xoxp-`) - **not** the Bot Token
+8. Add it to your config under `slack.user_token`
+9. Get channel ID by right-clicking channel > View channel details
+10. Invite the bot to the channel: `/invite @YourBotName`
 
 ### Slack Setup (Optional)
 
@@ -221,10 +249,13 @@ Slack integration is required only if you want to use the `tasklog break` comman
 
 2. **Configure OAuth & Permissions**
    - In the left sidebar, click "OAuth & Permissions"
-   - Scroll down to "Scopes" > "Bot Token Scopes"
-   - Add the following scopes:
-     - `chat:write` - Post messages to channels
-     - `users.profile:write` - Update your own status
+   - Scroll down to "Scopes"
+   - Under **"Bot Token Scopes"**, add:
+     - `chat:write` - **Required:** Post messages to channels
+   - Under **"User Token Scopes"**, add:
+     - `users.profile:write` - **Required:** Update your own status
+   
+   **Important:** You need BOTH bot and user scopes for break notifications to work fully
 
 3. **Install App to Workspace**
    - Scroll to the top of the "OAuth & Permissions" page
@@ -232,9 +263,11 @@ Slack integration is required only if you want to use the `tasklog break` comman
    - Review permissions and click "Allow"
 
 4. **Get Your Bot Token**
-   - After installation, you'll see "Bot User OAuth Token"
-   - Copy this token (starts with `xoxb-`)
-   - Add it to your `~/.tasklog/config.yaml` under `slack.bot_token`
+   - After installation, you'll see both tokens:
+     - **"Bot User OAuth Token"** (starts with `xoxb-`) - for posting messages
+     - **"User OAuth Token"** (starts with `xoxp-`) - for updating status
+   - Use the **User OAuth Token** (`xoxp-`) in your config
+   - Add it to your `~/.tasklog/config.yaml` under `slack.user_token`
 
 5. **Get Channel ID**
    - In Slack, right-click the channel where you want break notifications
@@ -276,8 +309,8 @@ This will:
 4. Prompt for a label
 5. Ask for an optional comment
 6. Confirm before logging
-7. Log to both Jira and Tempo
-8. Show today's summary
+7. Log to Jira (automatically syncs to Tempo)
+8. Show today's summary from Tempo
 
 ### Using Shortcuts
 
@@ -342,7 +375,6 @@ This will:
 
 **Note:** Slack integration is optional. If not configured, the break will be registered locally but Slack won't be updated.
 tasklog summary
-```
 
 Example output:
 ```
@@ -386,64 +418,10 @@ Shortcuts are perfect for cronjobs or repetitive tasks:
 
 ```bash
 # Add to crontab for daily standup at 9:30 AM
-30 9 * * 1-5 /usr/local/bin/tasklog log -s daily
+30 9 * * 1-5 /usr/local/bin/tasklog log daily
 ```
 
 If time is not predefined in the shortcut, the command will prompt for it.
-
-## Development
-
-### Project Structure
-
-```
-tasklog/
-├── cmd/                 # CLI commands
-│   ├── root.go         # Root command
-│   ├── log.go          # Log time command
-│   ├── sync.go         # Sync command
-│   └── summary.go      # Summary command
-├── internal/
-│   ├── config/         # Configuration management
-│   ├── jira/           # Jira API client
-│   ├── tempo/          # Tempo API client
-│   ├── storage/        # SQLite storage layer
-│   ├── timeparse/      # Time parsing logic
-│   └── ui/             # Interactive prompts
-├── main.go             # Application entry point
-├── config.example.yaml # Example configuration
-└── README.md
-```
-
-### Running Tests
-
-```bash
-# Run all tests
-go test ./...
-
-# Run tests with coverage
-go test -cover ./...
-
-# Generate coverage report
-make test-coverage
-
-# View coverage summary
-./scripts/coverage.sh
-```
-
-**Test Coverage**: Core business logic achieves **83.9%** average coverage (config: 83%, storage: 81.8%, timeparse: 89.2%). See [TESTING.md](TESTING.md) for details.
-
-### Build Options
-
-```bash
-# Development build
-go build -o tasklog
-
-# Production build with optimizations
-go build -ldflags="-s -w" -o tasklog
-
-# Cross-compile for Linux
-GOOS=linux GOARCH=amd64 go build -o tasklog-linux
-```
 
 ## Troubleshooting
 
@@ -487,9 +465,8 @@ zerolog.SetGlobalLevel(zerolog.DebugLevel)
 
 ## Environment Variables
 
-Alternative to config file:
-
 - `TASKLOG_CONFIG` - Path to config file (default: `~/.tasklog/config.yaml`)
+- `TASKLOG_LOG_LEVEL` - Set to `debug` for verbose logging (default: `info`)
 
 ## Contributing
 

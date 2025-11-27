@@ -12,7 +12,7 @@ Thank you for your interest in contributing to Tasklog! This guide will help you
 2. **Clone the repository:**
    ```bash
    git clone <repository-url>
-   cd timetracking
+   cd tasklog
    ```
 
 3. **Install dependencies:**
@@ -95,16 +95,69 @@ tasklog/
 - Ensure all tests pass before submitting PR
 - Aim for good test coverage of critical paths
 
+### Running Tests
+
 ```bash
-# Run all tests
-make test
+# Run all tests (silent mode)
+make go-test
 
-# Run tests with coverage
-make test-coverage
+# Run tests with verbose output
+make go-test-verbose
 
-# Run specific package tests
-go test -v ./internal/timeparse/
+# Run tests with coverage and race detector
+make go-test-coverage
 ```
+
+**Test Coverage**: Core business logic achieves **83.9%** average coverage (config: 83%, storage: 81.8%, timeparse: 89.2%). See [TESTING.md](TESTING.md) for details.
+
+### Code Quality
+
+```bash
+# Format code
+make go-fmt
+
+# Check formatting
+make go-fmt-check
+
+# Run linter
+make go-lint
+
+# Check for security vulnerabilities
+make go-vulncheck
+```
+
+### Build Options
+
+```bash
+# Development build
+make go-build
+
+# Build Docker image
+make docker-build VERSION=v1.0.0
+
+# Build and push Docker image
+make docker-build-and-push VERSION=v1.0.0
+
+# Create a release with GoReleaser (requires git tag)
+git tag v1.0.0
+make release
+
+# Build snapshot release locally (no tag required)
+make release-snapshot
+```
+
+## Changelog Management
+
+Tasklog uses [changie](https://changie.dev/) for managing changelog entries. When making changes:
+
+```bash
+# Create a new changelog entry
+changie new
+
+# Follow the prompts to select the type and describe your change
+```
+
+For detailed release process, see [RELEASE.md](RELEASE.md).
 
 ## Commit Messages
 
