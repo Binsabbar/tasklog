@@ -276,8 +276,19 @@ func runLog(cmd *cobra.Command, args []string) error {
 
 	// Show today's summary
 	fmt.Println()
-	if err := showTodaySummary(store, jiraClient, tempoClient, cfg); err != nil {
-		log.Error().Err(err).Msg("Failed to show summary")
+	if cfg.Tempo.Enabled && cfg.Tempo.APIToken != "" {
+		if err := showTodaySummary(store, jiraClient, tempoClient, cfg); err != nil {
+			log.Error().Err(err).Msg("Failed to show summary")
+		}
+	} else {
+		fmt.Println("═══════════════════════════════════════════")
+		fmt.Println("📊 Summary is disabled")
+		fmt.Println("═══════════════════════════════════════════")
+		fmt.Println("To enable time tracking summary, configure Tempo API in your config:")
+		fmt.Println("  tempo:")
+		fmt.Println("    enabled: true")
+		fmt.Println("    api_token: \"your-tempo-api-token\"")
+		fmt.Println("═══════════════════════════════════════════")
 	}
 
 	return nil

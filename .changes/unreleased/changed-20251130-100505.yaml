@@ -1,0 +1,3 @@
+kind: changed
+body: 'log: show friendly message when summary is disabled instead of Tempo API error. Summary now only displays when Tempo is enabled in config.'
+time: 2025-11-30T10:05:05.556924+03:00
