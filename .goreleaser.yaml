@@ -10,7 +10,7 @@ builds:
     binary: "tasklog"
     no_unique_dist_dir: false
     env:
-      - CGO_ENABLED=0
+      - CGO_ENABLED=1
     goos:
       - linux
       - darwin
