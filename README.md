@@ -8,7 +8,7 @@ An interactive CLI tool for tracking time on Jira tasks with seamless integratio
 
 - 🎯 **Interactive Task Selection**: List your in-progress tasks (configurable statuses) or search for any task
 - 🔍 **Project Filtering**: Optionally filter tasks to a specific Jira project
-- ⏱️ **Flexible Time Entry**: Support for multiple time formats (2h 30m, 2.5h, 150m)
+- ⏱️ **Flexible Time Entry**: Support for multiple time formats (2h 30m, 2.5h, 150m) - rounded to nearest 5 minutes
 - 🏷️ **Label Management**: Configure and use labels for categorizing work
 - ⚡ **Shortcuts**: Define shortcuts for repetitive tasks (perfect for cronjobs)
 - ⏸️ **Break Management**: Register breaks with automatic Slack status updates and channel notifications

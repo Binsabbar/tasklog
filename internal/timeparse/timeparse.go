@@ -3,21 +3,13 @@ package timeparse
 import (
 	"fmt"
 	"math"
-	"regexp"
-	"strconv"
 	"strings"
-)
 
-var (
-	// Regex patterns for parsing time formats
-	// Supports: 2h 30m, 2.5h, 150m, 2h30m, etc.
-	hoursMinutesPattern = regexp.MustCompile(`(?i)^(\d+)\s*h(?:ours?)?\s*(\d+)\s*m(?:in(?:utes?)?)?$`)
-	hoursOnlyPattern    = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s*h(?:ours?)?$`)
-	minutesOnlyPattern  = regexp.MustCompile(`(?i)^(\d+)\s*m(?:in(?:utes?)?)?$`)
+	str2duration "github.com/xhit/go-str2duration/v2"
 )
 
 // Parse parses a time string and returns the duration in seconds
-// Supports formats: "2h 30m", "2.5h", "150m", "2h30m"
+// Supports various formats using go-str2duration library
 // Rounds to the nearest 5 minutes
 func Parse(input string) (int, error) {
 	input = strings.TrimSpace(input)
@@ -25,40 +17,31 @@ func Parse(input string) (int, error) {
 		return 0, fmt.Errorf("empty time input")
 	}
 
-	var totalMinutes float64
+	// Normalize the input:
+	// 1. Convert to lowercase for case insensitivity
+	// 2. Replace full words with abbreviations
+	// 3. Remove spaces between numbers and units
+	normalized := strings.ToLower(input)
+	normalized = strings.ReplaceAll(normalized, "hours", "h")
+	normalized = strings.ReplaceAll(normalized, "hour", "h")
+	normalized = strings.ReplaceAll(normalized, "minutes", "m")
+	normalized = strings.ReplaceAll(normalized, "minute", "m")
+	normalized = strings.ReplaceAll(normalized, "mins", "m")
+	normalized = strings.ReplaceAll(normalized, "min", "m")
+	normalized = strings.ReplaceAll(normalized, " ", "")
 
-	// Try matching "Xh Ym" or "XhYm" format
-	if matches := hoursMinutesPattern.FindStringSubmatch(input); matches != nil {
-		hours, err := strconv.Atoi(matches[1])
-		if err != nil {
-			return 0, fmt.Errorf("invalid hours value: %w", err)
-		}
-		minutes, err := strconv.Atoi(matches[2])
-		if err != nil {
-			return 0, fmt.Errorf("invalid minutes value: %w", err)
-		}
-		totalMinutes = float64(hours*60 + minutes)
-	} else if matches := hoursOnlyPattern.FindStringSubmatch(input); matches != nil {
-		// Try matching "X.Yh" or "Xh" format
-		hours, err := strconv.ParseFloat(matches[1], 64)
-		if err != nil {
-			return 0, fmt.Errorf("invalid hours value: %w", err)
-		}
-		totalMinutes = hours * 60
-	} else if matches := minutesOnlyPattern.FindStringSubmatch(input); matches != nil {
-		// Try matching "Xm" format
-		minutes, err := strconv.Atoi(matches[1])
-		if err != nil {
-			return 0, fmt.Errorf("invalid minutes value: %w", err)
-		}
-		totalMinutes = float64(minutes)
-	} else {
-		return 0, fmt.Errorf("invalid time format: %s (expected formats: 2h 30m, 2.5h, 150m)", input)
+	// Parse using the library
+	duration, err := str2duration.ParseDuration(normalized)
+	if err != nil {
+		return 0, fmt.Errorf("invalid time format: %s (expected formats: 2h 30m, 2.5h, 150m, 2h30m)", input)
 	}
 
-	if totalMinutes <= 0 {
+	if duration <= 0 {
 		return 0, fmt.Errorf("time must be positive")
 	}
+
+	// Convert to minutes for rounding
+	totalMinutes := duration.Minutes()
 
 	// Round to nearest 5 minutes
 	roundedMinutes := roundToNearest5(totalMinutes)
