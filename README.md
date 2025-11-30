@@ -33,9 +33,9 @@ Download the latest release for your platform from the [Releases page](https://g
 
 ```bash
 # Example for macOS (replace with your platform and version)
-curl -LO https://github.com/binsabbar/tasklog/releases/download/v1.0.0/tasklog_v1.0.0_darwin_amd64
-chmod +x tasklog_v1.0.0_darwin_amd64
-sudo mv tasklog_v1.0.0_darwin_amd64 /usr/local/bin/tasklog
+curl -LO https://github.com/Binsabbar/tasklog/releases/download/v1.0.0-alpha.1/tasklog_1.0.0-alpha.1_darwin_amd64
+chmod +x tasklog_1.0.0-alpha.1_darwin_amd64
+sudo mv tasklog_1.0.0-alpha.1_darwin_amd64 /usr/local/bin/tasklog
 ```
 
 Available platforms: Linux and macOS (amd64 and arm64)
