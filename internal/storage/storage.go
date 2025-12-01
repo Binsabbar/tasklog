@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/rs/zerolog/log"
+	_ "modernc.org/sqlite"
 )
 
 // Storage represents the SQLite storage layer
@@ -35,7 +35,7 @@ type TimeEntry struct {
 func NewStorage(dbPath string) (*Storage, error) {
 	log.Debug().Str("path", dbPath).Msg("Opening database")
 
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
@@ -165,18 +165,21 @@ func (s *Storage) UpdateTimeEntry(entry *TimeEntry) error {
 func (s *Storage) GetTodayEntries() ([]TimeEntry, error) {
 	log.Debug().Msg("Fetching today's entries")
 
-	today := time.Now().Format("2006-01-02")
+	now := time.Now()
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	endOfDay := startOfDay.AddDate(0, 0, 1)
+
 	query := `
 		SELECT 
 			id, issue_key, issue_summary, time_spent_seconds, time_spent,
 			label, comment, started, created_at, synced_to_jira, synced_to_tempo,
 			jira_worklog_id, tempo_worklog_id
 		FROM time_entries
-		WHERE DATE(started) = ?
+		WHERE started >= ? AND started < ?
 		ORDER BY started DESC
 	`
 
-	rows, err := s.db.Query(query, today)
+	rows, err := s.db.Query(query, startOfDay, endOfDay)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query time entries: %w", err)
 	}
@@ -268,16 +271,18 @@ func (s *Storage) GetUnsyncedEntries() ([]TimeEntry, error) {
 
 // GetTodayTotalSeconds calculates total seconds logged today
 func (s *Storage) GetTodayTotalSeconds() (int, error) {
-	today := time.Now().Format("2006-01-02")
+	now := time.Now()
+	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	endOfDay := startOfDay.AddDate(0, 0, 1)
 
 	var total sql.NullInt64
 	query := `
 		SELECT SUM(time_spent_seconds)
 		FROM time_entries
-		WHERE DATE(started) = ?
+		WHERE started >= ? AND started < ?
 	`
 
-	err := s.db.QueryRow(query, today).Scan(&total)
+	err := s.db.QueryRow(query, startOfDay, endOfDay).Scan(&total)
 	if err != nil {
 		return 0, fmt.Errorf("failed to calculate total: %w", err)
 	}

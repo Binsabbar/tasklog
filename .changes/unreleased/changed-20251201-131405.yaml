@@ -1,0 +1,3 @@
+kind: changed
+body: Switch SQLite driver to modernc.org/sqlite and enable CGO-free cross compilation
+time: 2025-12-01T13:14:05.977616+03:00
