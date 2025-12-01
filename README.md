@@ -520,4 +520,4 @@ MIT License - See LICENSE file for details
 - Built with [Cobra](https://github.com/spf13/cobra) for CLI framework
 - Uses [Survey](https://github.com/AlecAivazis/survey) for interactive prompts
 - Logging with [Zerolog](https://github.com/rs/zerolog)
-- SQLite integration via [go-sqlite3](https://github.com/mattn/go-sqlite3)
+- SQLite integration via [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite)
