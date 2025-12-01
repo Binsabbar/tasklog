@@ -1,3 +1,0 @@
-kind: fixed
-body: Enable CGO in GoReleaser builds to fix sqlite3 support in prebuilt binaries
-time: 2025-11-30T16:37:26.386703+03:00
