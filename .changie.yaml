@@ -1,6 +1,10 @@
 changesDir: .changes
 unreleasedDir: unreleased
 headerPath: header.tpl.md
+headers:
+  - id: prerelease
+    path: .changes/header.prerelease.tpl.md
+    keepLatestOnly: true
 changelogPath: CHANGELOG.md
 versionExt: md
 versionFormat: '## {{.Version}} - {{.Time.Format "2006-01-02"}}'
