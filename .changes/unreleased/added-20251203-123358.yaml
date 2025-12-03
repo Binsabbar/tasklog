@@ -1,0 +1,3 @@
+kind: added
+body: 'init: add --update flag to intelligently migrate existing config files by removing deprecated fields and adding new ones as comments'
+time: 2025-12-03T12:33:58.938829+03:00

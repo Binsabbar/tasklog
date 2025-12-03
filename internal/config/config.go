@@ -166,8 +166,8 @@ func getConfigDir() string {
 	return filepath.Join(homeDir, ".tasklog")
 }
 
-// getConfigPath returns the full path to the config file
-func getConfigPath() (string, error) {
+// GetConfigPath returns the full path to the config file
+func GetConfigPath() (string, error) {
 	// Check environment variable first
 	if envPath := os.Getenv("TASKLOG_CONFIG"); envPath != "" {
 		return envPath, nil
@@ -178,6 +178,11 @@ func getConfigPath() (string, error) {
 	configPath := filepath.Join(configDir, "config.yaml")
 
 	return configPath, nil
+}
+
+// getConfigPath is deprecated, use GetConfigPath instead
+func getConfigPath() (string, error) {
+	return GetConfigPath()
 }
 
 // EnsureConfigDir ensures the config directory exists
