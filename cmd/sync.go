@@ -13,7 +13,7 @@ import (
 var syncCmd = &cobra.Command{
 	Use:   "sync",
 	Short: "Sync unsynced time entries to Jira and Tempo",
-	Long:  `Attempts to sync any time entries that failed to sync to Jira or Tempo.`,
+	Long:  `Attempts to sync any time entries that failed to sync to Jira or Tempo.` + configHelp,
 	RunE:  runSync,
 }
 

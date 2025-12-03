@@ -13,7 +13,7 @@ import (
 var summaryCmd = &cobra.Command{
 	Use:   "summary",
 	Short: "Show today's time tracking summary",
-	Long:  `Displays a summary of all time entries logged today.`,
+	Long:  `Displays a summary of all time entries logged today.` + configHelp,
 	RunE:  runSummary,
 }
 

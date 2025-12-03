@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"tasklog/internal/config"
@@ -19,26 +18,31 @@ var (
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Initialize tasklog configuration",
-	Long:  `Creates the configuration directory and an example config file at ~/.tasklog/config.yaml`,
-	RunE:  runInit,
+	Long: `Creates the configuration directory and an example config file at ~/.tasklog/config.yaml
+
+Use --update to migrate an existing config file to the latest schema.
+This will remove deprecated fields and add new optional fields.` + configHelp,
+	RunE: runInit,
 }
 
 func init() {
 	rootCmd.AddCommand(initCmd)
-	initCmd.Flags().BoolVar(&updateConfig, "update", false, "Update existing config file with missing fields")
+	initCmd.Flags().BoolVar(&updateConfig, "update", false, "Migrate existing config to latest schema (removes deprecated fields, adds new optional fields)")
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
 	// Get config path (respects TASKLOG_CONFIG environment variable)
 	configPath, err := config.GetConfigPath()
 	if err != nil {
-		return fmt.Errorf("failed to get config path: %w", err)
+		fmt.Printf("failed to get config path: %v\n", err)
+		return nil
 	}
 
 	// Ensure config directory exists
-	configDir := filepath.Dir(configPath)
-	if err := os.MkdirAll(configDir, 0750); err != nil {
-		return fmt.Errorf("failed to create config directory: %w", err)
+	dirErr := config.EnsureConfigDir()
+	if dirErr != nil {
+		fmt.Printf("failed to create config directory: %v\n", dirErr)
+		return nil
 	}
 
 	// Check if config already exists
@@ -57,56 +61,17 @@ func runInit(cmd *cobra.Command, args []string) error {
 		fmt.Println("No existing config file found. Creating a new one...")
 	}
 
-	// Read example config from current directory
-	examplePath := "config.example.yaml"
-	exampleData, err := os.ReadFile(examplePath)
+	// Generate example config from the Config struct
+	exampleData, err := config.GenerateExampleConfig()
 	if err != nil {
-		// If example doesn't exist in current directory, create a basic one
-		exampleData = []byte(`# Tasklog Configuration
-# Fill in your credentials below
-
-# Required: Jira configuration
-jira:
-  url: "https://your-domain.atlassian.net"
-  username: "your-email@example.com"
-  api_token: "your-jira-api-token"
-  project_key: "PROJ"  # Project key to filter tasks
-
-# Required: Tempo configuration
-tempo:
-  api_token: "your-tempo-api-token"
-
-# Optional: Filter labels that can be used for time logging
-labels:
-  allowed_labels:
-    - "development"
-    - "code-review"
-    - "meeting"
-    - "testing"
-    - "documentation"
-    - "bug-fix"
-
-# Optional: Define shortcuts for quick time logging
-shortcuts:
-  - name: "daily"
-    task: "PROJ-123"
-    time: "30m"
-    label: "meeting"
-  
-  - name: "standup"
-    task: "PROJ-123"
-    time: "15m"
-    label: "meeting"
-
-# Optional: Database path (defaults to ~/.tasklog/tasklog.db)
-database:
-  path: ""
-`)
+		fmt.Printf("failed to generate example config: %v\n", err)
+		return nil
 	}
 
 	// Write config file
 	if err := os.WriteFile(configPath, exampleData, 0600); err != nil {
-		return fmt.Errorf("failed to create config file: %w", err)
+		fmt.Printf("failed to create config file: %v\n", err)
+		return nil
 	}
 
 	fmt.Println("✓ Configuration initialized successfully!")
@@ -122,53 +87,65 @@ database:
 	return nil
 }
 
-// updateExistingConfig updates an existing config file with new fields
+// updateExistingConfig updates an existing config file using the migration logic
 func updateExistingConfig(configPath string) error {
 	// Read existing config
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		return fmt.Errorf("failed to read config file: %w", err)
-	}
-
-	content := string(data)
-	lines := strings.Split(content, "\n")
-
-	// Analyze what needs to be updated
-	hasDeprecatedFields := false
-	missingFields := []string{}
-
-	// Check for deprecated fields
-	if strings.Contains(content, "user_token:") {
-		hasDeprecatedFields = true
-	}
-
-	// Check for missing new fields (task_statuses in jira section)
-	if !strings.Contains(content, "task_statuses:") {
-		missingFields = append(missingFields, "jira.task_statuses")
-	}
-
-	// If nothing needs updating, inform the user
-	if !hasDeprecatedFields && len(missingFields) == 0 {
-		fmt.Println("✓ Config file is already up to date!")
+		fmt.Printf("failed to read config file: %v\n", err)
 		return nil
 	}
 
-	// Show what will be changed
-	fmt.Println("Config migration required:")
-	if hasDeprecatedFields {
-		fmt.Println("\n⚠️  Deprecated fields to be removed:")
-		fmt.Println("  - slack.user_token (replaced by bot_token and user_id)")
+	// Run migration
+	updatedData, summary, err := config.MigrateConfig(data)
+	if err != nil {
+		fmt.Printf("failed to migrate config: %v\n", err)
+		return nil
 	}
-	if len(missingFields) > 0 {
-		fmt.Println("\n✨ New optional fields to be added (commented out):")
-		for _, field := range missingFields {
-			fmt.Printf("  - %s\n", field)
+
+	// If nothing needs updating, inform the user
+	if !summary.NeedsUpdate {
+		fmt.Printf("✓ Config file is already up to date (version %d)!\n", summary.FromVersion)
+		return nil
+	}
+
+	// Check if this is a version migration or optional sections update
+	isVersionMigration := summary.FromVersion < summary.ToVersion
+	hasMissingOptionalSections := len(summary.MissingOptionalSections) > 0
+
+	// Show what will be changed
+	if isVersionMigration {
+		fmt.Printf("Config migration required: v%d → v%d\n", summary.FromVersion, summary.ToVersion)
+		if summary.HasDeprecatedFields {
+			fmt.Println("\n⚠️  Deprecated fields to be removed:")
+			for _, field := range summary.DeprecatedFields {
+				fmt.Printf("  - %s\n", field)
+			}
+		}
+		if len(summary.MissingFields) > 0 {
+			fmt.Println("\n✨ New required fields to be added:")
+			for _, field := range summary.MissingFields {
+				fmt.Printf("  - %s\n", field)
+			}
+		}
+	}
+
+	if hasMissingOptionalSections {
+		if !isVersionMigration {
+			fmt.Println("New optional configuration sections available:")
+		}
+		fmt.Println("\n✨ Optional sections to be added:")
+		for _, section := range summary.MissingOptionalSections {
+			fmt.Printf("  - %s (with example values)\n", section)
 		}
 	}
 
 	// Ask for confirmation
 	fmt.Printf("\nA backup will be created at: %s.backup\n", configPath)
-	if !confirm("Do you want to proceed with the update?") {
+	if isVersionMigration {
+		fmt.Println("Note: Migration may reformat your YAML file.")
+	}
+	if !confirmUpdate("Do you want to proceed with the update?") {
 		fmt.Println("Update cancelled.")
 		return nil
 	}
@@ -176,107 +153,48 @@ func updateExistingConfig(configPath string) error {
 	// Create backup
 	backupPath := configPath + ".backup"
 	if err := os.WriteFile(backupPath, data, 0600); err != nil {
-		return fmt.Errorf("failed to create backup: %w", err)
+		fmt.Printf("failed to create backup: %v\n", err)
+		return nil
 	}
 	fmt.Printf("✓ Backup created at: %s\n", backupPath)
 
-	// Update the config
-	updatedLines := removeDeprecatedFields(lines)
-	updatedLines = addNewFields(updatedLines)
+	// Apply optional sections if needed
+	if hasMissingOptionalSections {
+		updatedData, err = config.ApplyOptionalSections(updatedData, summary.MissingOptionalSections)
+		if err != nil {
+			fmt.Printf("failed to apply optional sections: %v\n", err)
+			return nil
+		}
+	}
 
 	// Write updated config
-	updatedContent := strings.Join(updatedLines, "\n")
-	if err := os.WriteFile(configPath, []byte(updatedContent), 0600); err != nil {
-		return fmt.Errorf("failed to write updated config: %w", err)
+	if err := os.WriteFile(configPath, updatedData, 0600); err != nil {
+		fmt.Printf("failed to write updated config: %v\n", err)
+		return nil
 	}
 
 	fmt.Println("✓ Config file updated successfully!")
 	fmt.Println("\nChanges made:")
-	if hasDeprecatedFields {
+	if summary.HasDeprecatedFields {
 		fmt.Println("  - Removed deprecated fields")
 	}
-	if len(missingFields) > 0 {
-		fmt.Println("  - Added new optional fields (commented out)")
-		fmt.Println("\nReview the config file and uncomment/configure new fields as needed.")
+	if len(summary.MissingFields) > 0 {
+		fmt.Println("  - Added new required fields")
+	}
+	if hasMissingOptionalSections {
+		fmt.Println("  - Added new optional sections with example values")
+		fmt.Println("\nReview the config file and customize the new sections as needed.")
 	}
 
 	return nil
 }
 
-// removeDeprecatedFields removes deprecated configuration fields
-func removeDeprecatedFields(lines []string) []string {
-	result := []string{}
-	inSlackSection := false
-
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-
-		// Track if we're in the slack section
-		if trimmed == "slack:" {
-			inSlackSection = true
-			result = append(result, line)
-			continue
-		}
-
-		// Exit slack section when we hit another top-level key
-		if inSlackSection && len(trimmed) > 0 && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") && !strings.HasPrefix(trimmed, "#") {
-			inSlackSection = false
-		}
-
-		// Remove user_token from slack section
-		if inSlackSection && strings.Contains(trimmed, "user_token:") {
-			continue // Skip this line
-		}
-
-		result = append(result, line)
-	}
-
-	return result
-}
-
-// addNewFields adds new configuration fields as comments
-func addNewFields(lines []string) []string {
-	result := []string{}
-	jiraSectionProcessed := false
-	slackSectionProcessed := false
-
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-
-		result = append(result, line)
-
-		// Add task_statuses to jira section
-		if !jiraSectionProcessed && strings.HasPrefix(trimmed, "project_key:") {
-			// Add task_statuses after project_key
-			result = append(result, "  # Optional: Task statuses to include when fetching tasks (defaults to [\"In Progress\"])")
-			result = append(result, "  # task_statuses:")
-			result = append(result, "  #   - \"In Progress\"")
-			result = append(result, "  #   - \"In Review\"")
-			jiraSectionProcessed = true
-		}
-
-		// Add bot_token and user_id to slack section
-		if !slackSectionProcessed && trimmed == "slack:" {
-			// Check if there's content in slack section
-			if i+1 < len(lines) {
-				nextLine := strings.TrimSpace(lines[i+1])
-				// If slack section is empty or only has channel_id, add the new fields
-				if nextLine == "" || strings.HasPrefix(nextLine, "#") || strings.HasPrefix(nextLine, "channel_id:") {
-					result = append(result, "  # bot_token: \"xoxb-your-slack-bot-token\"  # Slack Bot OAuth Token")
-					result = append(result, "  # user_id: \"U1234567890\"  # Your Slack User ID for status updates")
-					slackSectionProcessed = true
-				}
-			}
-		}
-	}
-
-	return result
-}
-
-// confirm prompts the user for yes/no confirmation
-func confirm(prompt string) bool {
+// confirmUpdate prompts the user for yes/no confirmation
+// Accepts y, yes, Y, Yes, YES (case-insensitive)
+// Returns false on any error or non-affirmative response
+func confirmUpdate(prompt string) bool {
 	reader := bufio.NewReader(os.Stdin)
-	fmt.Printf("%s (y/n): ", prompt)
+	fmt.Printf("%s (y/N): ", prompt)
 	response, err := reader.ReadString('\n')
 	if err != nil {
 		return false

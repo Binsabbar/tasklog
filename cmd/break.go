@@ -26,7 +26,7 @@ Example:
   tasklog break prayer
   tasklog break coffee
 
-Run without arguments to list available breaks.`,
+Run without arguments to list available breaks.` + configHelp,
 	Args: cobra.MaximumNArgs(1),
 	Run:  runBreak,
 }

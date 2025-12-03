@@ -1,16 +1,22 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/rs/zerolog/log"
 	"gopkg.in/yaml.v3"
 )
 
+// CurrentConfigVersion is the latest config schema version
+const CurrentConfigVersion = 1
+
 // Config represents the application configuration
 type Config struct {
+	Version   int             `yaml:"version,omitempty"` // Schema version for migrations
 	Jira      JiraConfig      `yaml:"jira"`
 	Tempo     TempoConfig     `yaml:"tempo"`
 	Labels    LabelsConfig    `yaml:"labels"`
@@ -22,17 +28,17 @@ type Config struct {
 
 // JiraConfig contains Jira API configuration (all fields required)
 type JiraConfig struct {
-	URL          string   `yaml:"url"`           // Jira instance URL (required)
-	Username     string   `yaml:"username"`      // Jira username/email (required)
-	APIToken     string   `yaml:"api_token"`     // Jira API token (required)
-	ProjectKey   string   `yaml:"project_key"`   // Project key to filter tasks (required)
-	TaskStatuses []string `yaml:"task_statuses"` // Task statuses to include (optional, defaults to ["In Progress"])
+	URL          string   `yaml:"url" validate:"required,url"`        // Jira instance URL (required)
+	Username     string   `yaml:"username" validate:"required,email"` // Jira username/email (required)
+	APIToken     string   `yaml:"api_token" validate:"required"`      // Jira API token (required)
+	ProjectKey   string   `yaml:"project_key" validate:"required"`    // Project key to filter tasks (required)
+	TaskStatuses []string `yaml:"task_statuses"`                      // Task statuses to include (optional, defaults to ["In Progress"])
 }
 
 // TempoConfig contains Tempo API configuration (optional)
 type TempoConfig struct {
-	APIToken string `yaml:"api_token"` // Tempo API token (optional - only if logging separately to Tempo)
-	Enabled  bool   `yaml:"enabled"`   // Whether to log to Tempo separately (optional, default: false)
+	APIToken string `yaml:"api_token" validate:"required_if=Enabled true"` // Tempo API token (optional - only if logging separately to Tempo)
+	Enabled  bool   `yaml:"enabled"`                                       // Whether to log to Tempo separately (optional, default: false)
 }
 
 // LabelsConfig contains label filtering configuration (optional)
@@ -68,7 +74,7 @@ type BreakEntry struct {
 
 // Load loads configuration from the config file
 func Load() (*Config, error) {
-	configPath, err := getConfigPath()
+	configPath, err := GetConfigPath()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get config path: %w", err)
 	}
@@ -78,7 +84,7 @@ func Load() (*Config, error) {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("config file not found at %s. Please create one using the example", configPath)
+			return nil, fmt.Errorf("config file not found at %s. Please create one using `tasklog init` command", configPath)
 		}
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
@@ -90,7 +96,7 @@ func Load() (*Config, error) {
 
 	// Set defaults
 	if config.Database.Path == "" {
-		config.Database.Path = filepath.Join(getConfigDir(), "tasklog.db")
+		config.Database.Path = filepath.Join(getDefaultConfigDir(), "tasklog.db")
 	}
 
 	// Validate configuration
@@ -102,25 +108,70 @@ func Load() (*Config, error) {
 	return &config, nil
 }
 
-// Validate validates the configuration
+// Validate validates the configuration using struct tags
 func (c *Config) Validate() error {
-	if c.Jira.URL == "" {
-		return fmt.Errorf("jira.url is required")
-	}
-	if c.Jira.Username == "" {
-		return fmt.Errorf("jira.username is required")
-	}
-	if c.Jira.APIToken == "" {
-		return fmt.Errorf("jira.api_token is required")
-	}
-	if c.Jira.ProjectKey == "" {
-		return fmt.Errorf("jira.project_key is required")
-	}
-	// Tempo is optional - only validate if enabled
-	if c.Tempo.Enabled && c.Tempo.APIToken == "" {
-		return fmt.Errorf("tempo.api_token is required when tempo.enabled is true")
+	validate := validator.New()
+	if err := validate.Struct(c); err != nil {
+		// Format validation errors to be more user-friendly
+		var validationErrors validator.ValidationErrors
+		if errors.As(err, &validationErrors) {
+			for _, fieldErr := range validationErrors {
+				// Convert field namespace to yaml-style path (e.g., Config.Jira.URL -> jira.url)
+				field := convertFieldNameToYAMLPath(fieldErr.Namespace())
+
+				switch fieldErr.Tag() {
+				case "required":
+					return fmt.Errorf("%s is required", field)
+				case "url":
+					return fmt.Errorf("%s must be a valid URL", field)
+				case "email":
+					return fmt.Errorf("%s must be a valid email address", field)
+				case "required_if":
+					// Extract the field name from the parameter (e.g., "Enabled true" -> "enabled is true")
+					return fmt.Errorf("%s is required when %s.enabled is true", field, "tempo")
+				default:
+					return fmt.Errorf("%s failed validation: %s", field, fieldErr.Tag())
+				}
+			}
+		}
+		return err
 	}
 	return nil
+}
+
+// convertFieldNameToYAMLPath converts validator field path to yaml-style path
+// Example: Config.Jira.URL -> jira.url, Config.Jira.APIToken -> jira.api_token
+func convertFieldNameToYAMLPath(namespace string) string {
+	// Remove "Config." prefix
+	if len(namespace) > 7 && namespace[:7] == "Config." {
+		namespace = namespace[7:]
+	}
+
+	// Convert camelCase/PascalCase to snake_case and lowercase
+	result := ""
+	for i, r := range namespace {
+		if r == '.' {
+			result += string(r)
+		} else if r >= 'A' && r <= 'Z' {
+			// Check if this is the start of a new segment (after a dot)
+			if i > 0 && namespace[i-1] == '.' {
+				// First letter after dot - just lowercase
+				result += string(r + 32)
+			} else if i > 0 && namespace[i-1] >= 'A' && namespace[i-1] <= 'Z' && i+1 < len(namespace) && namespace[i+1] >= 'a' && namespace[i+1] <= 'z' {
+				// Handle acronyms like "API" -> "api_" (when followed by lowercase)
+				result += "_" + string(r+32)
+			} else if i > 0 && namespace[i-1] >= 'a' && namespace[i-1] <= 'z' {
+				// Transition from lowercase to uppercase
+				result += "_" + string(r+32)
+			} else {
+				// Part of acronym or first char - just lowercase
+				result += string(r + 32)
+			}
+		} else {
+			result += string(r)
+		}
+	}
+	return result
 }
 
 // GetShortcut returns a shortcut by name
@@ -157,8 +208,8 @@ func (c *Config) GetBreak(name string) (*BreakEntry, bool) {
 	return nil, false
 }
 
-// getConfigDir returns the configuration directory path
-func getConfigDir() string {
+// getDefaultConfigDir returns the configuration directory path
+func getDefaultConfigDir() string {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to get user home directory")
@@ -174,20 +225,23 @@ func GetConfigPath() (string, error) {
 	}
 
 	// Otherwise use default path
-	configDir := getConfigDir()
+	configDir := getDefaultConfigDir()
 	configPath := filepath.Join(configDir, "config.yaml")
 
 	return configPath, nil
 }
 
-// getConfigPath is deprecated, use GetConfigPath instead
-func getConfigPath() (string, error) {
-	return GetConfigPath()
-}
-
 // EnsureConfigDir ensures the config directory exists
+// If TASKLOG_CONFIG is set, it ensures the directory for that file exists
 func EnsureConfigDir() error {
-	configDir := getConfigDir()
+	configPath, err := GetConfigPath()
+	if err != nil {
+		return err
+	}
+
+	// Extract directory from the config path
+	configDir := filepath.Dir(configPath)
+
 	if err := os.MkdirAll(configDir, 0750); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}

@@ -32,7 +32,7 @@ Examples:
   tasklog log              # Interactive mode
   tasklog log daily        # Use 'daily' shortcut
   tasklog log standup      # Use 'standup' shortcut
-  tasklog log -t PROJ-123  # Log to specific task`,
+  tasklog log -t PROJ-123  # Log to specific task` + configHelp,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runLog,
 }

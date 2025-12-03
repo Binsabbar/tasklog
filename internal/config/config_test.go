@@ -413,3 +413,25 @@ func TestConfig_GetBreak(t *testing.T) {
 		})
 	}
 }
+
+func TestEnsureConfigDir_RespectsEnvVar(t *testing.T) {
+	// Create temp directory for test
+	tmpDir := t.TempDir()
+	customConfigPath := filepath.Join(tmpDir, "custom", "subdir", "config.yaml")
+
+	// Set TASKLOG_CONFIG environment variable
+	os.Setenv("TASKLOG_CONFIG", customConfigPath)
+	defer os.Unsetenv("TASKLOG_CONFIG")
+
+	// Call EnsureConfigDir
+	err := EnsureConfigDir()
+	if err != nil {
+		t.Fatalf("EnsureConfigDir failed: %v", err)
+	}
+
+	// Verify the directory was created
+	expectedDir := filepath.Join(tmpDir, "custom", "subdir")
+	if _, err := os.Stat(expectedDir); os.IsNotExist(err) {
+		t.Errorf("expected directory %s to be created, but it does not exist", expectedDir)
+	}
+}
