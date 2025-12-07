@@ -1,0 +1,3 @@
+kind: added
+body: 'version: add version subcommand to display detailed build information, and hide upgrade command in non-official builds'
+time: 2025-12-07T17:07:17.261012+03:00

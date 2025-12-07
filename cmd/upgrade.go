@@ -41,10 +41,7 @@ you may need to run this command with sudo.` + configHelp,
 }
 
 func init() {
-	// Only add upgrade command if built by goreleaser (official release)
-	if IsOfficialBuild() {
-		rootCmd.AddCommand(upgradeCmd)
-	}
+	rootCmd.AddCommand(upgradeCmd)
 }
 
 func runUpgrade(cmd *cobra.Command, args []string) error {

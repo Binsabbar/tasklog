@@ -27,7 +27,6 @@ var rootCmd = &cobra.Command{
 	Short: "Interactive time tracking tool with Jira and Tempo integration",
 	Long: `Tasklog is an interactive CLI tool for tracking time on Jira tasks.
 It integrates with Jira Cloud API and Tempo to help you log time efficiently.` + configHelp,
-	Version: GetVersion(),
 }
 
 // Execute runs the root command
@@ -128,10 +127,16 @@ func SetVersionInfo(v, c, d, b string) {
 	commit = c
 	date = d
 	builtBy = b
+	// Update rootCmd version string after variables are set
+	rootCmd.Version = GetVersion()
 }
 
 func GetVersion() string {
 	return fmt.Sprintf("%s (commit: %s, date: %s)", version, commit, date)
+}
+
+func GetVersionDetails() string {
+	return fmt.Sprintf("%s (commit: %s, date: %s, builtBy: %s)", version, commit, date, builtBy)
 }
 
 // IsOfficialBuild returns true if the binary was built by goreleaser (official release)
@@ -139,15 +144,6 @@ func IsOfficialBuild() bool {
 	return builtBy == "goreleaser"
 }
 
-var VersionCmd = &cobra.Command{
-	Use:   "version",
-	Short: "Print version information",
-	Run: func(_ *cobra.Command, _ []string) {
-		logger := log.Logger.With().Str("component", "version").Logger()
-		logger.Info().
-			Str("commit", commit).
-			Str("built_at", date).
-			Str("built_by", builtBy).
-			Msg("tasklog version information")
-	},
+func SetCommandsVisibility() {
+	upgradeCmd.Hidden = !IsOfficialBuild()
 }

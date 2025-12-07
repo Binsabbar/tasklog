@@ -30,6 +30,7 @@ func main() {
 
 	// Set version information
 	cmd.SetVersionInfo(version, commit, date, builtBy)
+	cmd.SetCommandsVisibility()
 
 	// Execute root command
 	if err := cmd.Execute(); err != nil {
