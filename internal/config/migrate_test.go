@@ -75,6 +75,9 @@ slack:
 breaks:
   - name: lunch
     duration: 60
+update:
+  check_for_updates: true
+  check_interval: 24
 `,
 			expectNeedsUpdate: false,
 			expectFromVersion: 1,
@@ -263,8 +266,9 @@ breaks:
 	if err != nil {
 		t.Errorf("unexpected error for valid v1 config with user_token: %v", err)
 	}
-	if summary.NeedsUpdate {
-		t.Error("expected NeedsUpdate=false for complete v1 config")
+	// Should need update for missing 'update' section
+	if !summary.NeedsUpdate {
+		t.Error("expected NeedsUpdate=true for v1 config missing update section")
 	}
 	// Verify user_token is preserved
 	if !strings.Contains(string(result), "xoxp-valid-token") {
@@ -316,7 +320,10 @@ slack:
 breaks:
   - name: lunch
     duration: 60
-    emoji: ":fork_and_knife:"
+    emoji: \":fork_and_knife:\"
+update:
+  check_for_updates: true
+  check_interval: 24
 `
 	result, summary, err := MigrateConfig([]byte(input))
 	if err != nil {
@@ -324,7 +331,7 @@ breaks:
 	}
 
 	if summary.NeedsUpdate {
-		t.Errorf("expected NeedsUpdate=false for v1 config, got true")
+		t.Errorf("expected NeedsUpdate=false for complete v1 config, got true")
 	}
 
 	if summary.FromVersion != 1 || summary.ToVersion != 1 {
@@ -485,7 +492,7 @@ database:
 	}
 
 	// Should detect missing optional sections
-	expectedMissing := []string{"labels", "shortcuts", "breaks"}
+	expectedMissing := []string{"labels", "shortcuts", "breaks", "update"}
 	if len(summary.MissingOptionalSections) != len(expectedMissing) {
 		t.Errorf("expected %d missing sections, got %d: %v",
 			len(expectedMissing), len(summary.MissingOptionalSections), summary.MissingOptionalSections)

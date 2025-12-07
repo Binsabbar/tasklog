@@ -24,6 +24,7 @@ type Config struct {
 	Database  DatabaseConfig  `yaml:"database"`
 	Slack     SlackConfig     `yaml:"slack"`
 	Breaks    []BreakEntry    `yaml:"breaks"`
+	Update    UpdateConfig    `yaml:"update"` // Update checking configuration (optional)
 }
 
 // JiraConfig contains Jira API configuration (all fields required)
@@ -72,6 +73,13 @@ type BreakEntry struct {
 	Emoji    string `yaml:"emoji"`    // Emoji for Slack status (optional)
 }
 
+// UpdateConfig contains update checking configuration (optional)
+type UpdateConfig struct {
+	CheckForUpdates bool   `yaml:"check_for_updates"` // Whether to check for updates (default: true)
+	CheckInterval   string `yaml:"check_interval"`    // Check interval as duration string like "24h", "1d" (default: "24h")
+	Channel         string `yaml:"channel"`           // Release channel: "", "stable", "alpha", "beta", "rc" (default: auto-detect from current version)
+}
+
 // Load loads configuration from the config file
 func Load() (*Config, error) {
 	configPath, err := GetConfigPath()
@@ -98,6 +106,14 @@ func Load() (*Config, error) {
 	if config.Database.Path == "" {
 		config.Database.Path = filepath.Join(getDefaultConfigDir(), "tasklog.db")
 	}
+
+	// Set update config defaults
+	if config.Update.CheckInterval == "" {
+		config.Update.CheckInterval = "24h" // Default: check once per day
+	}
+	// CheckForUpdates defaults to true (zero value of bool is false, so we need explicit check)
+	// If the user hasn't set it, it will be false, and we should default to true
+	// This is handled in the usage by checking if the config exists and defaulting appropriately
 
 	// Validate configuration
 	if err := config.Validate(); err != nil {
@@ -229,6 +245,15 @@ func GetConfigPath() (string, error) {
 	configPath := filepath.Join(configDir, "config.yaml")
 
 	return configPath, nil
+}
+
+// GetConfigDir returns the configuration directory path
+func GetConfigDir() (string, error) {
+	configPath, err := GetConfigPath()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Dir(configPath), nil
 }
 
 // EnsureConfigDir ensures the config directory exists

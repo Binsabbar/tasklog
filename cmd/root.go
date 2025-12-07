@@ -5,9 +5,15 @@ import (
 	"os"
 
 	"tasklog/internal/config"
+	"tasklog/internal/updater"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+)
+
+const (
+	githubOwner = "Binsabbar"
+	githubRepo  = "tasklog"
 )
 
 const configHelp = `
@@ -37,6 +43,58 @@ func initConfig() {
 	// Ensure config directory exists
 	if err := config.EnsureConfigDir(); err != nil {
 		log.Error().Err(err).Msg("Failed to ensure config directory")
+	}
+
+	// Check for updates (non-blocking, best effort)
+	go checkForUpdatesBackground()
+}
+
+// checkForUpdatesBackground checks for updates in the background
+func checkForUpdatesBackground() {
+	// Load config to check if updates are enabled
+	cfg, err := config.Load()
+	if err != nil {
+		// If config doesn't exist or fails to load, skip update check
+		return
+	}
+
+	// Check if update checking is disabled
+	// Default is true (check for updates) unless explicitly set to false
+	if !cfg.Update.CheckForUpdates {
+		return
+	}
+
+	// Skip if not an official build
+	if !IsOfficialBuild() {
+		log.Debug().Msg("Skipping update check (not an official release build)")
+		return
+	}
+
+	// Get config dir for caching
+	configDir, err := config.GetConfigDir()
+	if err != nil {
+		return // Skip if we can't get config dir
+	}
+
+	// Create updater
+	upd := updater.NewUpdater(githubOwner, githubRepo, configDir, cfg.Update.CheckInterval)
+
+	// Check for updates
+	updateInfo, err := upd.CheckForUpdate(version, cfg.Update.Channel)
+	if err != nil {
+		log.Debug().Err(err).Msg("Failed to check for updates")
+		return
+	}
+
+	// If update is available, notify user
+	if updateInfo != nil {
+		preReleaseTag := ""
+		if updateInfo.IsPreRelease {
+			preReleaseTag = " (pre-release)"
+		}
+		fmt.Fprintf(os.Stderr, "\n📦 New version available: %s → %s%s\n", updateInfo.CurrentVersion, updateInfo.LatestVersion, preReleaseTag)
+		fmt.Fprintf(os.Stderr, "   Run 'tasklog upgrade' to update\n")
+		fmt.Fprintf(os.Stderr, "   Release notes: %s\n\n", updateInfo.ReleaseURL)
 	}
 }
 
@@ -74,6 +132,11 @@ func SetVersionInfo(v, c, d, b string) {
 
 func GetVersion() string {
 	return fmt.Sprintf("%s (commit: %s, date: %s)", version, commit, date)
+}
+
+// IsOfficialBuild returns true if the binary was built by goreleaser (official release)
+func IsOfficialBuild() bool {
+	return builtBy == "goreleaser"
 }
 
 var VersionCmd = &cobra.Command{

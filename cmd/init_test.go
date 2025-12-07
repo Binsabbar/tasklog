@@ -40,6 +40,9 @@ database:
 		{
 			name: "handles already updated config",
 			initialConfig: `version: 1
+update:
+  check_for_updates: true
+  check_interval: "24h"
 jira:
   url: "https://example.atlassian.net"
   project_key: "PROJ"

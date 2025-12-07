@@ -1,0 +1,3 @@
+kind: added
+body: 'Added upgrade command to automatically update tasklog binary from GitHub releases with support for stable and pre-release channels'
+time: 2025-12-07T14:30:00+03:00

@@ -5,6 +5,7 @@ go 1.25.2
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7
 	github.com/go-playground/validator/v10 v10.28.0
+	github.com/hashicorp/go-version v1.8.0
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.10.1
 	github.com/xhit/go-str2duration/v2 v2.1.0

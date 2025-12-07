@@ -79,6 +79,11 @@ func GenerateExampleConfig() ([]byte, error) {
 				Emoji:    ":coffee:",
 			},
 		},
+		Update: UpdateConfig{
+			CheckForUpdates: true,
+			CheckInterval:   "24h",
+			Channel:         "", // Auto-detect from current version (stable if on stable, pre-release channel if on pre-release)
+		},
 	}
 
 	// Encode to YAML node for comment manipulation
@@ -128,6 +133,8 @@ func addConfigComments(node *yaml.Node) {
 			valueNode.HeadComment = "Slack integration for break notifications (optional)"
 		case "breaks":
 			valueNode.HeadComment = "Break types for quick registration (optional)"
+		case "update":
+			valueNode.HeadComment = "Update checking configuration (optional)"
 		}
 	}
 }
