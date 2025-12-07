@@ -27,6 +27,10 @@ var rootCmd = &cobra.Command{
 	Short: "Interactive time tracking tool with Jira and Tempo integration",
 	Long: `Tasklog is an interactive CLI tool for tracking time on Jira tasks.
 It integrates with Jira Cloud API and Tempo to help you log time efficiently.` + configHelp,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// Check for updates before every command (synchronous to ensure notification shows)
+		checkForUpdatesBackground()
+	},
 }
 
 // Execute runs the root command
@@ -43,9 +47,6 @@ func initConfig() {
 	if err := config.EnsureConfigDir(); err != nil {
 		log.Error().Err(err).Msg("Failed to ensure config directory")
 	}
-
-	// Check for updates (non-blocking, best effort)
-	go checkForUpdatesBackground()
 }
 
 // checkForUpdatesBackground checks for updates in the background
