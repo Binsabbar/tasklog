@@ -136,7 +136,7 @@ func matchesChannel(tagName, channel string) bool {
 	return strings.Contains(tagName, "-"+channel)
 }
 
-func (c *Client) doGetRequest(url string) (Body io.ReadCloser, error error) {
+func (c *Client) doGetRequest(url string) (io.ReadCloser, error) {
 	req, err := http.NewRequestWithContext(context.Background(), "GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -150,7 +150,7 @@ func (c *Client) doGetRequest(url string) (Body io.ReadCloser, error error) {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, fmt.Errorf("GitHub API returned status %d: %s", resp.StatusCode, string(body))
 	}
 	return resp.Body, nil

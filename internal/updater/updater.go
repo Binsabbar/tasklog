@@ -63,14 +63,14 @@ func (u *Updater) CheckForUpdate(currentVersion, channel string) (*UpdateInfo, e
 	// Check cache first to avoid hitting GitHub API frequently
 	if !u.shouldCheckForUpdate() {
 		log.Debug().Msg("Skipping update check (cache not expired)")
-		return nil, nil
+		return nil, nil //nolint:nilnil // nil update info with nil error indicates no check needed
 	}
 
 	// Parse current version
 	current, err := ParseVersion(currentVersion)
 	if err != nil {
-		log.Debug().Str("version", currentVersion).Msg("Failed to parse current version (probably dev build)")
-		return nil, nil // Don't error on dev builds
+		log.Debug().Str("version", currentVersion).Err(err).Msg("Failed to parse current version (probably dev build)")
+		return nil, nil //nolint:nilnil // nil update info with nil error indicates dev build, not an error
 	}
 
 	// Determine which channel to check based on current version and config
@@ -105,7 +105,7 @@ func (u *Updater) CheckForUpdate(currentVersion, channel string) (*UpdateInfo, e
 			Str("current", current.String()).
 			Str("latest", latest.String()).
 			Msg("No update available")
-		return nil, nil
+		return nil, nil //nolint:nilnil // nil update info with nil error indicates no update available
 	}
 
 	// Find the appropriate binary asset for current platform
@@ -204,10 +204,10 @@ func (u *Updater) downloadAndReplace(downloadURL, checksumURL string) (string, e
 	// Download new binary
 	log.Info().Str("url", downloadURL).Msg("Downloading new version")
 	if err := u.githubClient.DownloadAsset(downloadURL, tmpFile); err != nil {
-		tmpFile.Close()
+		_ = tmpFile.Close()
 		return "", fmt.Errorf("failed to download binary: %w", err)
 	}
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	// Verify checksum if provided
 	if checksumURL != "" {
@@ -218,7 +218,7 @@ func (u *Updater) downloadAndReplace(downloadURL, checksumURL string) (string, e
 	}
 
 	// Make new binary executable
-	if err := os.Chmod(tmpPath, 0755); err != nil {
+	if err := os.Chmod(tmpPath, 0o755); err != nil { //nolint:gosec // G302: binary needs to be executable
 		return "", fmt.Errorf("failed to make binary executable: %w", err)
 	}
 
@@ -301,15 +301,18 @@ func (u *Updater) updateCacheTimestamp() {
 	cacheFile := filepath.Join(u.cacheDir, "update_check_timestamp")
 
 	// Ensure cache directory exists
-	os.MkdirAll(u.cacheDir, 0755)
+	if err := os.MkdirAll(u.cacheDir, 0o755); err != nil { //nolint:gosec // G301: standard directory permissions
+		log.Debug().Err(err).Msg("Failed to create cache directory")
+		return
+	}
 
 	// Touch the file to update timestamp
-	f, err := os.OpenFile(cacheFile, os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(cacheFile, os.O_CREATE|os.O_WRONLY, 0o644) //nolint:gosec // G302: standard file permissions
 	if err != nil {
 		log.Debug().Err(err).Msg("Failed to update cache timestamp")
 		return
 	}
-	f.Close()
+	_ = f.Close()
 }
 
 // verifyChecksum verifies the SHA256 checksum of the downloaded file
@@ -327,7 +330,9 @@ func (u *Updater) verifyChecksum(filePath, checksumURL string) error {
 	}
 
 	// Read checksum
-	tmpFile.Seek(0, 0)
+	if _, err := tmpFile.Seek(0, 0); err != nil {
+		return fmt.Errorf("failed to seek checksum file: %w", err)
+	}
 	checksumData, err := io.ReadAll(tmpFile)
 	if err != nil {
 		return fmt.Errorf("failed to read checksum: %w", err)
@@ -395,8 +400,8 @@ func checkWritePermission(path string) error {
 	if err != nil {
 		return err
 	}
-	f.Close()
-	os.Remove(testFile)
+	_ = f.Close()
+	_ = os.Remove(testFile)
 	return nil
 }
 
