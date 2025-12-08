@@ -29,7 +29,12 @@ var rootCmd = &cobra.Command{
 It integrates with Jira Cloud API and Tempo to help you log time efficiently.` + configHelp,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		// Check for updates before every command (synchronous to ensure notification shows)
-		checkForUpdatesBackground()
+		// Skip if not an official build
+		if !IsOfficialBuild() {
+			log.Debug().Msg("Skipping update check (not an official release build)")
+			return
+		}
+		checkForUpdates()
 	},
 }
 
@@ -49,8 +54,8 @@ func initConfig() {
 	}
 }
 
-// checkForUpdatesBackground checks for updates in the background
-func checkForUpdatesBackground() {
+// checkForUpdates checks for updates
+func checkForUpdates() {
 	// Load config to check if updates are enabled
 	cfg, err := config.Load()
 	if err != nil {
@@ -64,37 +69,29 @@ func checkForUpdatesBackground() {
 		return
 	}
 
-	// Skip if not an official build
-	if !IsOfficialBuild() {
-		log.Debug().Msg("Skipping update check (not an official release build)")
-		return
-	}
-
 	// Get config dir for caching
 	configDir, err := config.GetConfigDir()
 	if err != nil {
 		return // Skip if we can't get config dir
 	}
 
-	// Create updater
+	// Check for updates (handles cache internally)
 	upd := updater.NewUpdater(githubOwner, githubRepo, configDir, cfg.Update.CheckInterval)
-
-	// Check for updates
-	updateInfo, err := upd.CheckForUpdate(version, cfg.Update.Channel)
+	notification, err := upd.CheckForUpdate(version, cfg.Update.Channel)
 	if err != nil {
 		log.Debug().Err(err).Msg("Failed to check for updates")
 		return
 	}
 
-	// If update is available, notify user
-	if updateInfo != nil {
+	// Display notification if update is available
+	if notification.Available {
 		preReleaseTag := ""
-		if updateInfo.IsPreRelease {
+		if notification.IsPreRelease {
 			preReleaseTag = " (pre-release)"
 		}
-		fmt.Fprintf(os.Stderr, "\n📦 New version available: %s → %s%s\n", updateInfo.CurrentVersion, updateInfo.LatestVersion, preReleaseTag)
+		fmt.Fprintf(os.Stderr, "\n📦 New version available: %s → %s%s\n", notification.CurrentVersion, notification.LatestVersion, preReleaseTag)
 		fmt.Fprintf(os.Stderr, "   Run 'tasklog upgrade' to update\n")
-		fmt.Fprintf(os.Stderr, "   Release notes: %s\n\n", updateInfo.ReleaseURL)
+		fmt.Fprintf(os.Stderr, "   Release notes: %s\n\n", notification.ReleaseURL)
 	}
 }
 
@@ -134,10 +131,6 @@ func SetVersionInfo(v, c, d, b string) {
 
 func GetVersion() string {
 	return fmt.Sprintf("%s (commit: %s, date: %s)", version, commit, date)
-}
-
-func GetVersionDetails() string {
-	return fmt.Sprintf("%s (commit: %s, date: %s, builtBy: %s)", version, commit, date, builtBy)
 }
 
 // IsOfficialBuild returns true if the binary was built by goreleaser (official release)

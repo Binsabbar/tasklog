@@ -142,22 +142,17 @@ func TestShouldCheckForUpdate(t *testing.T) {
 			tmpDir := t.TempDir()
 			updater := NewUpdater("owner", "repo", tmpDir, "24h")
 
+			var cache *UpdateCache = nil
 			if tt.setupCache {
-				// Create cache file with specific age
-				cacheFile := filepath.Join(tmpDir, "update_check_timestamp")
-				os.MkdirAll(tmpDir, 0755)
-				f, err := os.Create(cacheFile)
-				if err != nil {
-					t.Fatalf("failed to create cache file: %v", err)
+				// Create cache with specific age
+				cache = &UpdateCache{
+					LastCheck:       time.Now().Add(-tt.cacheAge),
+					UpdateAvailable: false,
 				}
-				f.Close()
-
-				// Set the modification time
-				pastTime := time.Now().Add(-tt.cacheAge)
-				os.Chtimes(cacheFile, pastTime, pastTime)
+				updater.saveUpdateCache(cache)
 			}
 
-			shouldCheck := updater.shouldCheckForUpdate()
+			shouldCheck := updater.shouldCheckForUpdate(cache)
 			if shouldCheck != tt.expectCheck {
 				t.Errorf("expected shouldCheck=%v, got %v", tt.expectCheck, shouldCheck)
 			}
@@ -165,23 +160,35 @@ func TestShouldCheckForUpdate(t *testing.T) {
 	}
 }
 
-func TestUpdateCacheTimestamp(t *testing.T) {
+func TestSaveUpdateCache(t *testing.T) {
 	tmpDir := t.TempDir()
 	updater := NewUpdater("owner", "repo", tmpDir, "24h")
 
-	// Update cache
-	updater.updateCacheTimestamp()
+	// Save cache
+	cache := &UpdateCache{
+		LastCheck:       time.Now(),
+		UpdateAvailable: true,
+		CurrentVersion:  "1.0.0",
+		LatestVersion:   "1.1.0",
+		IsPreRelease:    false,
+		ReleaseURL:      "https://github.com/owner/repo/releases/tag/v1.1.0",
+		Dismissed:       false,
+	}
+	updater.saveUpdateCache(cache)
 
 	// Verify cache file exists
-	cacheFile := filepath.Join(tmpDir, "update_check_timestamp")
-	info, err := os.Stat(cacheFile)
-	if err != nil {
+	cacheFile := filepath.Join(tmpDir, "update_cache.json")
+	if _, err := os.Stat(cacheFile); err != nil {
 		t.Fatalf("cache file not created: %v", err)
 	}
 
-	// Verify it's recent
-	if time.Since(info.ModTime()) > 5*time.Second {
-		t.Error("cache timestamp is not recent")
+	// Verify we can read it back
+	readCache := updater.getCachedUpdate()
+	if readCache == nil {
+		t.Fatal("failed to read cache")
+	}
+	if readCache.LatestVersion != "1.1.0" {
+		t.Errorf("expected latest version 1.1.0, got %s", readCache.LatestVersion)
 	}
 }
 
@@ -318,16 +325,6 @@ func TestCopyFileErrors(t *testing.T) {
 	}
 }
 
-func TestConfirmAction(t *testing.T) {
-	// Note: This function reads from stdin, so it's difficult to test directly
-	// In a real scenario, you'd inject the reader as a dependency
-	// For now, we just verify the function exists and has correct signature
-	confirm := ConfirmAction
-	if confirm == nil {
-		t.Error("ConfirmAction should not be nil")
-	}
-}
-
 func TestCheckForUpdate_DevBuild(t *testing.T) {
 	t.Skip("Skipping - requires GitHub API mocking to test properly")
 
@@ -335,17 +332,18 @@ func TestCheckForUpdate_DevBuild(t *testing.T) {
 	updater := NewUpdater("owner", "repo", tmpDir, "24h")
 
 	// Test with an invalid/unparseable version (like "dev")
-	// The code should parse it, fail, log, and return nil, nil WITHOUT hitting GitHub API
-	updateInfo, err := updater.CheckForUpdate("dev", "")
+	// The code should parse it, fail, log, and return notification with Available=false
+	notification, err := updater.CheckForUpdate("dev", "")
 
-	// Dev builds should return nil, nil without error
-	// The code returns early after failing to parse the version
+	// Dev builds should return non-nil notification with Available=false
 	if err != nil {
-		// If we get here, the code is still hitting the API when it shouldn't
-		t.Errorf("dev build should not return error (should return nil, nil early), got: %v", err)
+		t.Errorf("dev build should not return error, got: %v", err)
 	}
-	if updateInfo != nil {
-		t.Error("dev build should return nil updateInfo")
+	if notification == nil {
+		t.Fatal("dev build should return non-nil notification")
+	}
+	if notification.Available {
+		t.Error("dev build should return notification with Available=false")
 	}
 }
 
@@ -354,14 +352,21 @@ func TestCheckForUpdate_CacheExpiry(t *testing.T) {
 	updater := NewUpdater("owner", "repo", tmpDir, "24h")
 
 	// Create fresh cache
-	updater.updateCacheTimestamp()
+	cache := &UpdateCache{
+		LastCheck:       time.Now(),
+		UpdateAvailable: false,
+	}
+	updater.saveUpdateCache(cache)
 
-	// First call with cache should skip check
-	updateInfo, err := updater.CheckForUpdate("v1.0.0", "")
+	// First call with cache should skip check and return cached result
+	notification, err := updater.CheckForUpdate("v1.0.0", "")
 
-	// We expect nil/nil because cache is fresh
-	if updateInfo != nil {
-		t.Error("expected nil updateInfo due to fresh cache")
+	// We expect non-nil notification with Available=false from cache
+	if notification == nil {
+		t.Fatal("expected non-nil notification")
+	}
+	if notification.Available {
+		t.Error("expected Available=false from cache")
 	}
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)

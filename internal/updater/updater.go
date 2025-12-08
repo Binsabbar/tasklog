@@ -1,8 +1,8 @@
 package updater
 
 import (
-	"bufio"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -26,6 +26,26 @@ type UpdateInfo struct {
 	DownloadURL    string
 	AssetName      string
 	IsPreRelease   bool
+}
+
+// UpdateNotification contains information to display update notification
+type UpdateNotification struct {
+	Available      bool
+	CurrentVersion string
+	LatestVersion  string
+	IsPreRelease   bool
+	ReleaseURL     string
+}
+
+// UpdateCache stores cached update information
+type UpdateCache struct {
+	LastCheck       time.Time `json:"last_check"`
+	UpdateAvailable bool      `json:"update_available"`
+	CurrentVersion  string    `json:"current_version"`
+	LatestVersion   string    `json:"latest_version"`
+	IsPreRelease    bool      `json:"is_prerelease"`
+	ReleaseURL      string    `json:"release_url"`
+	Dismissed       bool      `json:"dismissed"`
 }
 
 // Updater handles checking for updates and upgrading binaries
@@ -58,14 +78,95 @@ func NewUpdater(owner, repo, cacheDir, checkInterval string) *Updater {
 
 // CheckForUpdate checks if a new version is available
 // channel can be "", "alpha", "beta", or "rc" for pre-releases
-// Returns UpdateInfo if update is available, nil if up-to-date, error on failure
-func (u *Updater) CheckForUpdate(currentVersion, channel string) (*UpdateInfo, error) {
-	// Check cache first to avoid hitting GitHub API frequently
-	if !u.shouldCheckForUpdate() {
-		log.Debug().Msg("Skipping update check (cache not expired)")
-		return nil, nil //nolint:nilnil // nil update info with nil error indicates no check needed
+// Returns UpdateNotification with availability info, always returns non-nil notification
+func (u *Updater) CheckForUpdate(currentVersion, channel string) (*UpdateNotification, error) {
+	// First check cache for existing notification
+	cache := u.getCachedUpdate()
+	if cache != nil && !u.shouldCheckForUpdate(cache) {
+		// Return cached notification
+		return &UpdateNotification{
+			Available:      cache.UpdateAvailable,
+			CurrentVersion: cache.CurrentVersion,
+			LatestVersion:  cache.LatestVersion,
+			IsPreRelease:   cache.IsPreRelease,
+			ReleaseURL:     cache.ReleaseURL,
+		}, nil
 	}
 
+	// Parse current version
+	current, err := ParseVersion(currentVersion)
+	if err != nil {
+		log.Debug().Str("version", currentVersion).Err(err).Msg("Failed to parse current version (probably dev build)")
+		// Return notification indicating no update (dev build)
+		return &UpdateNotification{Available: false}, nil
+	}
+
+	// Determine which channel to check based on current version and config
+	effectiveChannel := u.determineChannel(current, channel)
+
+	// Fetch latest release from GitHub
+	var release *github.Release
+	if effectiveChannel == "" {
+		// Check for stable releases only
+		release, err = u.githubClient.GetLatestRelease()
+	} else {
+		// Check for pre-releases
+		release, err = u.githubClient.GetLatestPreRelease(effectiveChannel)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch latest release: %w", err)
+	}
+
+	// Parse latest version
+	latest, err := ParseVersion(release.TagName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse latest version %s: %w", release.TagName, err)
+	}
+
+	// Check if update is available
+	if !latest.IsNewerThan(current) {
+		log.Debug().
+			Str("current", current.String()).
+			Str("latest", latest.String()).
+			Msg("No update available")
+		// Save cache indicating no update available
+		u.saveUpdateCache(&UpdateCache{
+			LastCheck:       time.Now(),
+			UpdateAvailable: false,
+			CurrentVersion:  current.String(),
+			LatestVersion:   latest.String(),
+		})
+		return &UpdateNotification{
+			Available:      false,
+			CurrentVersion: current.String(),
+			LatestVersion:  latest.String(),
+		}, nil
+	}
+
+	// Save update cache with update availability info
+	u.saveUpdateCache(&UpdateCache{
+		LastCheck:       time.Now(),
+		UpdateAvailable: true,
+		CurrentVersion:  current.String(),
+		LatestVersion:   latest.String(),
+		IsPreRelease:    release.Prerelease,
+		ReleaseURL:      u.githubClient.GetReleaseURL(release.TagName),
+		Dismissed:       false,
+	})
+
+	return &UpdateNotification{
+		Available:      true,
+		CurrentVersion: current.String(),
+		LatestVersion:  latest.String(),
+		IsPreRelease:   release.Prerelease,
+		ReleaseURL:     u.githubClient.GetReleaseURL(release.TagName),
+	}, nil
+}
+
+// GetUpdateInfo fetches full update info including download URLs for upgrade
+// Returns UpdateInfo if update is available, nil if up-to-date, error on failure
+func (u *Updater) GetUpdateInfo(currentVersion, channel string) (*UpdateInfo, error) {
 	// Parse current version
 	current, err := ParseVersion(currentVersion)
 	if err != nil {
@@ -89,9 +190,6 @@ func (u *Updater) CheckForUpdate(currentVersion, channel string) (*UpdateInfo, e
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch latest release: %w", err)
 	}
-
-	// Update cache timestamp
-	u.updateCacheTimestamp()
 
 	// Parse latest version
 	latest, err := ParseVersion(release.TagName)
@@ -124,6 +222,16 @@ func (u *Updater) CheckForUpdate(currentVersion, channel string) (*UpdateInfo, e
 	if downloadURL == "" {
 		return nil, fmt.Errorf("no binary found for platform %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
+
+	u.saveUpdateCache(&UpdateCache{
+		LastCheck:       time.Now(),
+		UpdateAvailable: true,
+		CurrentVersion:  current.String(),
+		LatestVersion:   latest.String(),
+		IsPreRelease:    release.Prerelease,
+		ReleaseURL:      u.githubClient.GetReleaseURL(release.TagName),
+		Dismissed:       false,
+	})
 
 	return &UpdateInfo{
 		CurrentVersion: current.String(),
@@ -165,11 +273,48 @@ func (u *Updater) PerformUpgrade(updateInfo *UpdateInfo, confirm func(string) bo
 		return backupPath, err
 	}
 
-	fmt.Printf("\n✓ Successfully upgraded to version %s!\n", updateInfo.LatestVersion)
-	fmt.Printf("Backup saved at: %s\n", backupPath)
-	fmt.Println("\nYou can now run 'tasklog version' to verify the new version.")
-
 	return backupPath, nil
+}
+
+// RollbackUpgrade restores from backup
+func (u *Updater) RollbackUpgrade(backupPath string) error {
+	binaryPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("failed to get binary path: %w", err)
+	}
+
+	binaryPath, err = filepath.EvalSymlinks(binaryPath)
+	if err != nil {
+		return fmt.Errorf("failed to resolve binary path: %w", err)
+	}
+
+	if err := os.Rename(backupPath, binaryPath); err != nil {
+		return fmt.Errorf("rollback failed: %w", err)
+	}s
+// determineChannel determines which release channel to check
+// If user is on pre-release, continue checking that channel unless config overrides
+// If user is on stable, check stable unless config specifies pre-release
+func (u *Updater) determineChannel(currentVersion *Version, configChannel string) string {
+	// If config explicitly sets a channel, use it
+	if configChannel != "" && configChannel != "stable" {
+		return configChannel
+	}
+
+	// If config says stable or empty, and current version is pre-release, stay on pre-release channel
+	if currentVersion.Prerelease() != "" {
+		// Extract the channel from pre-release (e.g., "alpha.1" -> "alpha")
+		parts := strings.Split(currentVersion.Prerelease(), ".")
+		if len(parts) > 0 {
+			channel := parts[0]
+			// Validate it's a known channel
+			if channel == "alpha" || channel == "beta" || channel == "rc" {
+				return channel
+			}
+		}
+	}
+
+	// Default to stable (empty channel)
+	return ""
 }
 
 // downloadAndReplace downloads the new binary and replaces the current one atomically
@@ -239,82 +384,6 @@ func (u *Updater) downloadAndReplace(downloadURL, checksumURL string) (string, e
 	return backupPath, nil
 }
 
-// RollbackUpgrade restores from backup
-func (u *Updater) RollbackUpgrade(backupPath string) error {
-	binaryPath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("failed to get binary path: %w", err)
-	}
-
-	binaryPath, err = filepath.EvalSymlinks(binaryPath)
-	if err != nil {
-		return fmt.Errorf("failed to resolve binary path: %w", err)
-	}
-
-	if err := os.Rename(backupPath, binaryPath); err != nil {
-		return fmt.Errorf("rollback failed: %w", err)
-	}
-
-	return nil
-}
-
-// determineChannel determines which release channel to check
-// If user is on pre-release, continue checking that channel unless config overrides
-// If user is on stable, check stable unless config specifies pre-release
-func (u *Updater) determineChannel(currentVersion *Version, configChannel string) string {
-	// If config explicitly sets a channel, use it
-	if configChannel != "" && configChannel != "stable" {
-		return configChannel
-	}
-
-	// If config says stable or empty, and current version is pre-release, stay on pre-release channel
-	if currentVersion.Prerelease() != "" {
-		// Extract the channel from pre-release (e.g., "alpha.1" -> "alpha")
-		parts := strings.Split(currentVersion.Prerelease(), ".")
-		if len(parts) > 0 {
-			channel := parts[0]
-			// Validate it's a known channel
-			if channel == "alpha" || channel == "beta" || channel == "rc" {
-				return channel
-			}
-		}
-	}
-
-	// Default to stable (empty channel)
-	return ""
-}
-
-// shouldCheckForUpdate checks if we should check for updates based on cache
-func (u *Updater) shouldCheckForUpdate() bool {
-	cacheFile := filepath.Join(u.cacheDir, "update_check_timestamp")
-
-	info, err := os.Stat(cacheFile)
-	if err != nil {
-		return true // Cache doesn't exist, should check
-	}
-
-	return time.Since(info.ModTime()) > u.checkInterval
-}
-
-// updateCacheTimestamp updates the cache timestamp file
-func (u *Updater) updateCacheTimestamp() {
-	cacheFile := filepath.Join(u.cacheDir, "update_check_timestamp")
-
-	// Ensure cache directory exists
-	if err := os.MkdirAll(u.cacheDir, 0o755); err != nil { //nolint:gosec // G301: standard directory permissions
-		log.Debug().Err(err).Msg("Failed to create cache directory")
-		return
-	}
-
-	// Touch the file to update timestamp
-	f, err := os.OpenFile(cacheFile, os.O_CREATE|os.O_WRONLY, 0o644) //nolint:gosec // G302: standard file permissions
-	if err != nil {
-		log.Debug().Err(err).Msg("Failed to update cache timestamp")
-		return
-	}
-	_ = f.Close()
-}
-
 // verifyChecksum verifies the SHA256 checksum of the downloaded file
 func (u *Updater) verifyChecksum(filePath, checksumURL string) error {
 	// Download checksum
@@ -361,18 +430,66 @@ func (u *Updater) verifyChecksum(filePath, checksumURL string) error {
 	return nil
 }
 
-// ConfirmAction prompts the user for yes/no confirmation
-func ConfirmAction(prompt string) bool {
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Printf("%s (y/N): ", prompt)
-	response, err := reader.ReadString('\n')
+// getCachedUpdate returns cached update info if available and not expired
+func (u *Updater) getCachedUpdate() *UpdateCache {
+	cacheFile := u.getCacheFilePath()
+
+	// Read cache file
+	data, err := os.ReadFile(cacheFile)
 	if err != nil {
-		return false
+		return nil // No cache file
 	}
-	response = strings.ToLower(strings.TrimSpace(response))
-	return response == "y" || response == "yes"
+
+	// Unmarshal cache
+	var cache UpdateCache
+	if err := json.Unmarshal(data, &cache); err != nil {
+		log.Debug().Err(err).Msg("Failed to unmarshal cache")
+		return nil
+	}
+
+	// Return cache (caller should check if update is available and not dismissed)
+	return &cache
 }
 
+// ShowUpdateNotification checks cache and displays update notification if available
+func (u *Updater) getCacheFilePath() string {
+	return filepath.Join(u.cacheDir, "update_cache.json")
+}
+
+// shouldCheckForUpdate checks if we should check for updates based on cache
+func (u *Updater) shouldCheckForUpdate(cache *UpdateCache) bool {
+	if cache == nil {
+		return true // No cache, should check
+	}
+
+	return time.Since(cache.LastCheck) > u.checkInterval
+}
+
+// saveUpdateCache saves the update cache to disk
+func (u *Updater) saveUpdateCache(cache *UpdateCache) {
+	cacheFile := u.getCacheFilePath()
+
+	// Ensure cache directory exists
+	if err := os.MkdirAll(u.cacheDir, 0o755); err != nil { //nolint:gosec // G301: standard directory permissions
+		log.Debug().Err(err).Msg("Failed to create cache directory")
+		return
+	}
+
+	// Marshal cache to JSON
+	data, err := json.Marshal(cache)
+	if err != nil {
+		log.Debug().Err(err).Msg("Failed to marshal cache")
+		return
+	}
+
+	// Write cache file
+	if err := os.WriteFile(cacheFile, data, 0o644); err != nil { //nolint:gosec // G302: standard file permissions
+		log.Debug().Err(err).Msg("Failed to write cache file")
+	}
+}
+
+// utils
+// ConfirmAction prompts the user for yes/no confirmation
 // getAssetNameForPlatform returns the expected asset name for the current platform
 func getAssetNameForPlatform() string {
 	goos := runtime.GOOS
