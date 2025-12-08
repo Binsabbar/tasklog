@@ -290,7 +290,20 @@ func (u *Updater) RollbackUpgrade(backupPath string) error {
 
 	if err := os.Rename(backupPath, binaryPath); err != nil {
 		return fmt.Errorf("rollback failed: %w", err)
-	}s
+	}
+
+	return nil
+}
+
+// ClearUpdateCache removes the update cache file
+func (u *Updater) ClearUpdateCache() error {
+	cacheFile := u.getCacheFilePath()
+	if err := os.Remove(cacheFile); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove cache file: %w", err)
+	}
+	return nil
+}
+
 // determineChannel determines which release channel to check
 // If user is on pre-release, continue checking that channel unless config overrides
 // If user is on stable, check stable unless config specifies pre-release
