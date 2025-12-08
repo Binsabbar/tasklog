@@ -1,12 +1,15 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"strings"
 
 	"tasklog/internal/config"
 	"tasklog/internal/updater"
 
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -68,8 +71,8 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	// Create updater
 	upd := updater.NewUpdater(githubOwner, githubRepo, configDir, cfg.Update.CheckInterval)
 
-	// Check for updates
-	updateInfo, err := upd.CheckForUpdate(version, cfg.Update.Channel)
+	// Get full update info for upgrade
+	updateInfo, err := upd.GetUpdateInfo(version, cfg.Update.Channel)
 	if err != nil {
 		return fmt.Errorf("failed to check for updates: %w", err)
 	}
@@ -80,7 +83,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	}
 
 	// Perform upgrade (handles user interaction and all upgrade logic)
-	backupPath, err := upd.PerformUpgrade(updateInfo, updater.ConfirmAction)
+	backupPath, err := upd.PerformUpgrade(updateInfo, confirmAction)
 	if err != nil {
 		if backupPath != "" {
 			fmt.Printf("\n❌ Upgrade failed: %v\n", err)
@@ -100,5 +103,25 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	fmt.Printf("\n✓ Successfully upgraded to version %s!\n", updateInfo.LatestVersion)
+	fmt.Printf("Backup saved at: %s\n", backupPath)
+	fmt.Println("\nYou can now run 'tasklog version' to verify the new version.")
+
+	// Clear update cache after successful upgrade
+	if clearErr := upd.ClearUpdateCache(); clearErr != nil {
+		log.Debug().Err(clearErr).Msg("Failed to clear update cache")
+	}
+
 	return nil
+}
+
+func confirmAction(prompt string) bool {
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Printf("%s (y/N): ", prompt)
+	response, err := reader.ReadString('\n')
+	if err != nil {
+		return false
+	}
+	response = strings.ToLower(strings.TrimSpace(response))
+	return response == "y" || response == "yes"
 }
