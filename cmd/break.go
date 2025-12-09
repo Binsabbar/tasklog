@@ -44,7 +44,7 @@ func runBreak(cmd *cobra.Command, args []string) {
 
 	// If no break name provided, list available breaks
 	if len(args) == 0 {
-		if len(cfg.Breaks) == 0 {
+		if len(cfg.Slack.Breaks) == 0 {
 			fmt.Println("❌ No breaks configured. Add breaks to your config.yaml file.")
 			fmt.Println("\nExample configuration:")
 			fmt.Println("breaks:")
@@ -56,7 +56,7 @@ func runBreak(cmd *cobra.Command, args []string) {
 
 		fmt.Println("📋 Available breaks:")
 		fmt.Println("")
-		for _, b := range cfg.Breaks {
+		for _, b := range cfg.Slack.Breaks {
 			emoji := b.Emoji
 			if emoji == "" {
 				emoji = "⏸️"

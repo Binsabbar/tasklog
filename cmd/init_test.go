@@ -38,9 +38,8 @@ database:
 			expectMissingFields: []string{"jira.task_statuses"},
 		},
 		{
-			name: "handles already updated config",
-			initialConfig: `version: 1
-update:
+			name: "v0 config with root-level shortcuts/breaks migrates to v1 nested structure",
+			initialConfig: `update:
   disabled: false
   check_interval: "24h"
 jira:
@@ -69,7 +68,7 @@ breaks:
     duration: 60
     emoji: ":fork_and_knife:"
 `,
-			expectNeedsUpdate: false,
+			expectNeedsUpdate: true, // v0 needs migration to v1 (moves shortcuts/breaks to nested)
 		},
 		{
 			name: "adds missing task_statuses only",
