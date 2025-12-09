@@ -20,6 +20,26 @@ func GenerateExampleConfig() ([]byte, error) {
 				"In Progress",
 				"In Review",
 			},
+			Shortcuts: []ShortcutEntry{
+				{
+					Name:  "daily",
+					Task:  "PROJ-123",
+					Time:  "30m",
+					Label: "meeting",
+				},
+				{
+					Name:  "standup",
+					Task:  "PROJ-123",
+					Time:  "15m",
+					Label: "meeting",
+				},
+				{
+					Name:  "code-review",
+					Task:  "PROJ-456",
+					Time:  "",
+					Label: "code-review",
+				},
+			},
 		},
 		Tempo: TempoConfig{
 			Enabled:  false,
@@ -35,48 +55,28 @@ func GenerateExampleConfig() ([]byte, error) {
 				"bug-fix",
 			},
 		},
-		Shortcuts: []ShortcutEntry{
-			{
-				Name:  "daily",
-				Task:  "PROJ-123",
-				Time:  "30m",
-				Label: "meeting",
-			},
-			{
-				Name:  "standup",
-				Task:  "PROJ-123",
-				Time:  "15m",
-				Label: "meeting",
-			},
-			{
-				Name:  "code-review",
-				Task:  "PROJ-456",
-				Time:  "",
-				Label: "code-review",
-			},
-		},
 		Database: DatabaseConfig{
 			Path: "",
 		},
 		Slack: SlackConfig{
 			UserToken: "xoxp-your-slack-user-token",
 			ChannelID: "C1234567890",
-		},
-		Breaks: []BreakEntry{
-			{
-				Name:     "lunch",
-				Duration: 60,
-				Emoji:    ":fork_and_knife:",
-			},
-			{
-				Name:     "prayer",
-				Duration: 15,
-				Emoji:    ":pray:",
-			},
-			{
-				Name:     "coffee",
-				Duration: 10,
-				Emoji:    ":coffee:",
+			Breaks: []BreakEntry{
+				{
+					Name:     "lunch",
+					Duration: 60,
+					Emoji:    ":fork_and_knife:",
+				},
+				{
+					Name:     "prayer",
+					Duration: 15,
+					Emoji:    ":pray:",
+				},
+				{
+					Name:     "coffee",
+					Duration: 10,
+					Emoji:    ":coffee:",
+				},
 			},
 		},
 		Update: UpdateConfig{
@@ -125,14 +125,10 @@ func addConfigComments(node *yaml.Node) {
 			valueNode.HeadComment = "Tempo configuration (optional - only if logging separately to Tempo)"
 		case "labels":
 			valueNode.HeadComment = "Allowed labels for time logging (optional - if empty, all Jira labels available)"
-		case "shortcuts":
-			valueNode.HeadComment = "Shortcuts for quick time logging (optional)"
 		case "database":
 			valueNode.HeadComment = "Database configuration (optional)"
 		case "slack":
 			valueNode.HeadComment = "Slack integration for break notifications (optional)"
-		case "breaks":
-			valueNode.HeadComment = "Break types for quick registration (optional)"
 		case "update":
 			valueNode.HeadComment = "Update checking configuration (optional)"
 		}

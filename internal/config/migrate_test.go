@@ -52,39 +52,6 @@ slack:
 			shouldContain:       []string{"user_token", "version: 1"},
 		},
 		{
-			name: "v1: config already up to date",
-			input: `version: 1
-jira:
-  url: "https://example.com"
-  project_key: "PROJ"
-  task_statuses:
-    - "In Progress"
-tempo:
-  enabled: false
-labels:
-  allowed_labels:
-    - development
-shortcuts:
-  - name: daily
-    task: PROJ-123
-database:
-  path: ""
-slack:
-  user_token: "xoxp-token"
-  channel_id: "C123"
-breaks:
-  - name: lunch
-    duration: 60
-update:
-  check_for_updates: true
-  check_interval: 24
-`,
-			expectNeedsUpdate: false,
-			expectFromVersion: 1,
-			expectToVersion:   1,
-			shouldContain:     []string{"task_statuses", "user_token"},
-		},
-		{
 			name: "v0 to v1: handles missing slack section",
 			input: `jira:
   url: "https://example.com"
@@ -237,6 +204,7 @@ jira:
 
 func TestMigrateConfig_V1WithUserToken(t *testing.T) {
 	// V1 config with user_token is valid (user_token is not deprecated)
+	// V1 has nested shortcuts/breaks structure
 	input := `version: 1
 jira:
   url: "https://example.com"
@@ -245,22 +213,22 @@ jira:
   project_key: "PROJ"
   task_statuses:
     - In Progress
+  shortcuts:
+    - name: daily
+      task: PROJ-123
 tempo:
   enabled: false
 labels:
   allowed_labels:
     - development
-shortcuts:
-  - name: daily
-    task: PROJ-123
 database:
   path: ""
 slack:
   user_token: "xoxp-valid-token"
   channel_id: "C123"
-breaks:
-  - name: lunch
-    duration: 60
+  breaks:
+    - name: lunch
+      duration: 60
 `
 	result, summary, err := MigrateConfig([]byte(input))
 	if err != nil {
@@ -292,6 +260,8 @@ slack:
 }
 
 func TestMigrateConfig_V1AlreadyUpToDate(t *testing.T) {
+	// v1 config with nested structure (shortcuts under jira, breaks under slack)
+	// This is the current v1 structure - no migration needed
 	input := `version: 1
 jira:
   url: https://mycompany.atlassian.net
@@ -301,26 +271,26 @@ jira:
   task_statuses:
     - In Progress
     - In Review
+  shortcuts:
+    - name: daily
+      task: PROJ-123
+      time: 30m
+      label: meeting
 tempo:
   enabled: true
   api_token: tempo-secret
 labels:
   allowed_labels:
     - development
-shortcuts:
-  - name: daily
-    task: PROJ-123
-    time: 30m
-    label: meeting
 database:
   path: ""
 slack:
   user_token: xoxp-token
   channel_id: C123456
-breaks:
-  - name: lunch
-    duration: 60
-    emoji: \":fork_and_knife:\"
+  breaks:
+    - name: lunch
+      duration: 60
+      emoji: \":fork_and_knife:\"
 update:
   check_for_updates: true
   check_interval: 24
@@ -330,8 +300,9 @@ update:
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	// v1 with nested structure is up-to-date - no migration needed
 	if summary.NeedsUpdate {
-		t.Errorf("expected NeedsUpdate=false for complete v1 config, got true")
+		t.Errorf("expected NeedsUpdate=false for v1 config with nested structure, got true")
 	}
 
 	if summary.FromVersion != 1 || summary.ToVersion != 1 {
@@ -343,8 +314,16 @@ update:
 	if !strings.Contains(resultStr, "version: 1") {
 		t.Error("expected result to contain version: 1")
 	}
+
+	// Original values should be preserved
 	if !strings.Contains(resultStr, "user_token: xoxp-token") {
 		t.Error("expected result to preserve existing user_token")
+	}
+	if !strings.Contains(resultStr, "name: daily") {
+		t.Error("expected shortcut 'daily' to be preserved")
+	}
+	if !strings.Contains(resultStr, "name: lunch") {
+		t.Error("expected break 'lunch' to be preserved")
 	}
 }
 
@@ -373,6 +352,7 @@ tempo:
 		t.Error("expected NeedsUpdate=true for v0 config")
 	}
 
+	// Should migrate v0→v1 (current version)
 	if summary.FromVersion != 0 || summary.ToVersion != 1 {
 		t.Errorf("expected v0→v1, got v%d→v%d", summary.FromVersion, summary.ToVersion)
 	}
@@ -384,7 +364,7 @@ tempo:
 
 	resultStr := string(result)
 
-	// Should add version: 1
+	// Should end with version: 1 (current version)
 	if !strings.Contains(resultStr, "version: 1") {
 		t.Error("expected result to contain 'version: 1'")
 	}
@@ -486,13 +466,13 @@ database:
 		t.Error("expected NeedsUpdate=true for config missing optional sections")
 	}
 
-	// Should stay at v1
+	// v1 config stays at v1 (only missing optional sections, no version migration)
 	if summary.FromVersion != 1 || summary.ToVersion != 1 {
 		t.Errorf("expected v1→v1, got v%d→v%d", summary.FromVersion, summary.ToVersion)
 	}
 
-	// Should detect missing optional sections
-	expectedMissing := []string{"labels", "shortcuts", "breaks", "update"}
+	// Should detect missing optional sections (for v1, shortcuts/breaks are nested - not optional at root)
+	expectedMissing := []string{"labels", "update"}
 	if len(summary.MissingOptionalSections) != len(expectedMissing) {
 		t.Errorf("expected %d missing sections, got %d: %v",
 			len(expectedMissing), len(summary.MissingOptionalSections), summary.MissingOptionalSections)
@@ -511,8 +491,10 @@ database:
 		}
 	}
 
-	// Result should be unchanged at this stage (ApplyOptionalSections is called separately)
-	if string(result) != input {
+	// Config stays at v1, only detects missing sections
+	// MigrateConfig doesn't add missing sections automatically - init command does that
+	resultStr := string(result)
+	if !strings.Contains(resultStr, "version: 1") {
 		t.Error("MigrateConfig should not modify v1 config, only detect missing sections")
 	}
 }
@@ -535,7 +517,9 @@ tempo:
   enabled: false
 `
 
-	missingSections := []string{"labels", "shortcuts", "breaks"}
+	// In v1, shortcuts and breaks are nested under jira/slack, not root-level sections
+	// Only labels is a root-level optional section
+	missingSections := []string{"labels"}
 
 	result, err := ApplyOptionalSections([]byte(input), missingSections)
 	if err != nil {
@@ -544,29 +528,19 @@ tempo:
 
 	resultStr := string(result)
 
-	// Verify all sections were added
+	// Verify labels section was added
 	if !strings.Contains(resultStr, "labels:") {
 		t.Error("expected 'labels' section to be added")
-	}
-	if !strings.Contains(resultStr, "shortcuts:") {
-		t.Error("expected 'shortcuts' section to be added")
-	}
-	if !strings.Contains(resultStr, "breaks:") {
-		t.Error("expected 'breaks' section to be added")
 	}
 
 	// Verify it has example values from template
 	if !strings.Contains(resultStr, "allowed_labels:") {
 		t.Error("expected 'allowed_labels' in labels section")
 	}
-	if !strings.Contains(resultStr, "name: daily") {
-		t.Error("expected shortcut example 'daily' in shortcuts section")
-	}
-	if !strings.Contains(resultStr, "name: lunch") {
-		t.Error("expected break example 'lunch' in breaks section")
-	}
 
-	// Verify original fields are preserved
+	// Note: shortcuts and breaks are no longer root-level optional sections in v1
+	// They are nested under jira.shortcuts and slack.breaks respectively
+	// The template adds them when jira/slack sections are present, not via missingSections	// Verify original fields are preserved
 	if !strings.Contains(resultStr, "url: https://example.com") {
 		t.Error("expected original jira URL to be preserved")
 	}

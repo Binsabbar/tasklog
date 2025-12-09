@@ -126,9 +126,11 @@ func TestValidate(t *testing.T) {
 
 func TestGetShortcut(t *testing.T) {
 	config := Config{
-		Shortcuts: []ShortcutEntry{
-			{Name: "daily", Task: "PROJ-123", Time: "30m", Label: "meeting"},
-			{Name: "standup", Task: "PROJ-456", Time: "15m", Label: "meeting"},
+		Jira: JiraConfig{
+			Shortcuts: []ShortcutEntry{
+				{Name: "daily", Task: "PROJ-123", Time: "30m", Label: "meeting"},
+				{Name: "standup", Task: "PROJ-456", Time: "15m", Label: "meeting"},
+			},
 		},
 	}
 
@@ -277,7 +279,7 @@ func TestLoadConfig_ValidConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
 
-	validConfig := `
+	validConfig := `version: 2
 jira:
   url: "https://example.atlassian.net"
   username: "user@example.com"
@@ -286,6 +288,11 @@ jira:
   task_statuses:
     - "In Progress"
     - "In Review"
+  shortcuts:
+    - name: "daily"
+      task: "PROJ-123"
+      time: "30m"
+      label: "meeting"
 
 tempo:
   api_token: "tempo-token"
@@ -294,12 +301,6 @@ labels:
   allowed_labels:
     - "development"
     - "testing"
-
-shortcuts:
-  - name: "daily"
-    task: "PROJ-123"
-    time: "30m"
-    label: "meeting"
 `
 	err := os.WriteFile(configPath, []byte(validConfig), 0600)
 	if err != nil {
@@ -338,8 +339,8 @@ shortcuts:
 		t.Errorf("expected 2 labels, got %d", len(config.Labels.AllowedLabels))
 	}
 
-	if len(config.Shortcuts) != 1 {
-		t.Errorf("expected 1 shortcut, got %d", len(config.Shortcuts))
+	if len(config.Jira.Shortcuts) != 1 {
+		t.Errorf("expected 1 shortcut, got %d", len(config.Jira.Shortcuts))
 	}
 }
 
@@ -383,10 +384,12 @@ tempo:
 
 func TestConfig_GetBreak(t *testing.T) {
 	config := &Config{
-		Breaks: []BreakEntry{
-			{Name: "lunch", Duration: 60, Emoji: ":fork_and_knife:"},
-			{Name: "prayer", Duration: 15, Emoji: ":pray:"},
-			{Name: "coffee", Duration: 10, Emoji: ":coffee:"},
+		Slack: SlackConfig{
+			Breaks: []BreakEntry{
+				{Name: "lunch", Duration: 60, Emoji: ":fork_and_knife:"},
+				{Name: "prayer", Duration: 15, Emoji: ":pray:"},
+				{Name: "coffee", Duration: 10, Emoji: ":coffee:"},
+			},
 		},
 	}
 

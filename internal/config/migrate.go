@@ -23,7 +23,7 @@ type MigrationFunc func(raw map[string]interface{}, summary *MigrationSummary) e
 // migrations is the registry of version-specific migration functions
 // Each migration bumps the version by 1
 var migrations = map[int]MigrationFunc{
-	0: migrateV0ToV1, // v0 (no version field) -> v1
+	0: migrateV0ToV1, // v0 (no version field) -> v1 (adds task_statuses, uses nested shortcuts/breaks)
 }
 
 // MigrateConfig analyzes and migrates a config file to the latest schema
@@ -345,20 +345,29 @@ func validateV0Config(raw map[string]interface{}) error {
 }
 
 // validateV1Config validates v1 config structure
+// v1 requires shortcuts under jira and breaks under slack (not at root)
 func validateV1Config(raw map[string]interface{}) error {
 	// Basic structure check - jira section must exist
 	if _, hasJira := raw["jira"]; !hasJira {
 		return fmt.Errorf("v1 config must have 'jira' section")
 	}
 
-	// Don't validate all required fields here - that's done by Config.Validate() after loading
-	// This validation is just to catch version mismatches
+	// Check that shortcuts/breaks are not at root level (they should be nested)
+	if _, hasShortcuts := raw["shortcuts"]; hasShortcuts {
+		return fmt.Errorf("v1 config should not have 'shortcuts' at root level (should be under jira)")
+	}
+	if _, hasBreaks := raw["breaks"]; hasBreaks {
+		return fmt.Errorf("v1 config should not have 'breaks' at root level (should be under slack)")
+	}
+
 	return nil
 }
 
 // migrateV0ToV1 migrates config from v0 (no version) to v1
 // Changes:
 // - Adds jira.task_statuses (as comment if missing)
+// - Moves shortcuts from root level to jira.shortcuts (if present)
+// - Moves breaks from root level to slack.breaks (if present)
 // - No changes to Slack fields (user_token is still valid)
 //
 // Note on nested optional fields:
@@ -368,14 +377,49 @@ func validateV1Config(raw map[string]interface{}) error {
 // 2. Migration functions can add them with appropriate comments/examples
 // 3. They're tied to specific version changes in the schema
 //
-// Top-level optional sections (labels, shortcuts, breaks) are detected automatically
+// Top-level optional sections (labels) are detected automatically
 // by detectMissingOptionalSections() without manual updates.
+// shortcuts and breaks are now nested under jira/slack in v1.
 func migrateV0ToV1(raw map[string]interface{}, summary *MigrationSummary) error {
 	// Check for missing jira.task_statuses
 	if jiraSection, ok := raw["jira"].(map[string]interface{}); ok {
 		if _, hasTaskStatuses := jiraSection["task_statuses"]; !hasTaskStatuses {
 			summary.MissingFields = append(summary.MissingFields, "jira.task_statuses")
 		}
+	}
+
+	// Move shortcuts under jira if they exist at root level
+	if shortcuts, hasShortcuts := raw["shortcuts"]; hasShortcuts {
+		// Ensure jira section exists
+		jiraSection, ok := raw["jira"].(map[string]interface{})
+		if !ok {
+			jiraSection = make(map[string]interface{})
+			raw["jira"] = jiraSection
+		}
+
+		// Move shortcuts to jira.shortcuts
+		jiraSection["shortcuts"] = shortcuts
+		delete(raw, "shortcuts")
+
+		summary.DeprecatedFields = append(summary.DeprecatedFields, "shortcuts (moved to jira.shortcuts)")
+		summary.HasDeprecatedFields = true
+	}
+
+	// Move breaks under slack if they exist at root level
+	if breaks, hasBreaks := raw["breaks"]; hasBreaks {
+		// Ensure slack section exists
+		slackSection, ok := raw["slack"].(map[string]interface{})
+		if !ok {
+			slackSection = make(map[string]interface{})
+			raw["slack"] = slackSection
+		}
+
+		// Move breaks to slack.breaks
+		slackSection["breaks"] = breaks
+		delete(raw, "breaks")
+
+		summary.DeprecatedFields = append(summary.DeprecatedFields, "breaks (moved to slack.breaks)")
+		summary.HasDeprecatedFields = true
 	}
 
 	return nil
