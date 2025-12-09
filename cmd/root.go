@@ -3,8 +3,10 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"tasklog/internal/config"
+	"tasklog/internal/prerelease"
 	"tasklog/internal/updater"
 
 	"github.com/rs/zerolog/log"
@@ -28,6 +30,11 @@ var rootCmd = &cobra.Command{
 	Long: `Tasklog is an interactive CLI tool for tracking time on Jira tasks.
 It integrates with Jira Cloud API and Tempo to help you log time efficiently.` + configHelp,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// Check for pre-release config issues first (only for pre-release builds)
+		if IsPreReleaseBuild() {
+			checkPreReleaseConfigIssues()
+		}
+
 		// Check for updates before every command (synchronous to ensure notification shows)
 		// Skip if not an official build
 		if !IsOfficialBuild() {
@@ -138,6 +145,39 @@ func IsOfficialBuild() bool {
 	return builtBy == "goreleaser"
 }
 
+// IsPreReleaseBuild returns true if this is a pre-release version (alpha, beta, rc)
+func IsPreReleaseBuild() bool {
+	// Check if version contains alpha, beta, or rc
+	return strings.Contains(version, "alpha") || strings.Contains(version, "beta") || strings.Contains(version, "rc")
+}
+
 func SetCommandsVisibility() {
 	upgradeCmd.Hidden = !IsOfficialBuild()
+}
+
+// checkPreReleaseConfigIssues checks for configuration issues in pre-release builds
+func checkPreReleaseConfigIssues() {
+	// Try to load config file
+	configPath, err := config.GetConfigPath()
+	if err != nil {
+		return // No config path, skip check
+	}
+
+	// Read config file
+	configData, err := os.ReadFile(configPath)
+	if err != nil {
+		return // Can't read config, skip check
+	}
+
+	// Validate config for known pre-release issues
+	issues, err := prerelease.ValidateConfig(configData)
+	if err != nil {
+		log.Debug().Err(err).Msg("Failed to validate pre-release config")
+		return
+	}
+
+	// Display issues if found
+	if len(issues) > 0 {
+		fmt.Fprint(os.Stderr, prerelease.FormatIssues(issues))
+	}
 }
