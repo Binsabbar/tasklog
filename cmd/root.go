@@ -64,8 +64,8 @@ func checkForUpdates() {
 	}
 
 	// Check if update checking is disabled
-	// Default is true (check for updates) unless explicitly set to false
-	if !cfg.Update.CheckForUpdates {
+	// Default is false (checks enabled) unless explicitly set to true
+	if cfg.Update.Disabled {
 		return
 	}
 
