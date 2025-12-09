@@ -12,28 +12,28 @@ import (
 )
 
 // CurrentConfigVersion is the latest config schema version
+// v1: Initial versioned schema with nested structure (shortcuts under jira, breaks under slack)
 const CurrentConfigVersion = 1
 
 // Config represents the application configuration
 type Config struct {
-	Version   int             `yaml:"version,omitempty"` // Schema version for migrations
-	Jira      JiraConfig      `yaml:"jira"`
-	Tempo     TempoConfig     `yaml:"tempo"`
-	Labels    LabelsConfig    `yaml:"labels"`
-	Shortcuts []ShortcutEntry `yaml:"shortcuts"`
-	Database  DatabaseConfig  `yaml:"database"`
-	Slack     SlackConfig     `yaml:"slack"`
-	Breaks    []BreakEntry    `yaml:"breaks"`
-	Update    UpdateConfig    `yaml:"update"` // Update checking configuration (optional)
+	Version  int            `yaml:"version,omitempty"` // Schema version for migrations
+	Jira     JiraConfig     `yaml:"jira"`
+	Tempo    TempoConfig    `yaml:"tempo"`
+	Labels   LabelsConfig   `yaml:"labels"`
+	Database DatabaseConfig `yaml:"database"`
+	Slack    SlackConfig    `yaml:"slack"`
+	Update   UpdateConfig   `yaml:"update"` // Update checking configuration (optional)
 }
 
 // JiraConfig contains Jira API configuration (all fields required)
 type JiraConfig struct {
-	URL          string   `yaml:"url" validate:"required,url"`        // Jira instance URL (required)
-	Username     string   `yaml:"username" validate:"required,email"` // Jira username/email (required)
-	APIToken     string   `yaml:"api_token" validate:"required"`      // Jira API token (required)
-	ProjectKey   string   `yaml:"project_key" validate:"required"`    // Project key to filter tasks (required)
-	TaskStatuses []string `yaml:"task_statuses"`                      // Task statuses to include (optional, defaults to ["In Progress"])
+	URL          string          `yaml:"url" validate:"required,url"`        // Jira instance URL (required)
+	Username     string          `yaml:"username" validate:"required,email"` // Jira username/email (required)
+	APIToken     string          `yaml:"api_token" validate:"required"`      // Jira API token (required)
+	ProjectKey   string          `yaml:"project_key" validate:"required"`    // Project key to filter tasks (required)
+	TaskStatuses []string        `yaml:"task_statuses"`                      // Task statuses to include (optional, defaults to ["In Progress"])
+	Shortcuts    []ShortcutEntry `yaml:"shortcuts"`                          // Predefined shortcuts for quick time logging (optional)
 }
 
 // TempoConfig contains Tempo API configuration (optional)
@@ -62,8 +62,9 @@ type DatabaseConfig struct {
 
 // SlackConfig contains Slack integration configuration (optional)
 type SlackConfig struct {
-	UserToken string `yaml:"user_token"` // Slack user OAuth token (optional)
-	ChannelID string `yaml:"channel_id"` // Channel ID for break messages (optional)
+	UserToken string       `yaml:"user_token"` // Slack user OAuth token (optional)
+	ChannelID string       `yaml:"channel_id"` // Channel ID for break messages (optional)
+	Breaks    []BreakEntry `yaml:"breaks"`     // Predefined break types (optional)
 }
 
 // BreakEntry represents a predefined break type (optional)
@@ -190,7 +191,7 @@ func convertFieldNameToYAMLPath(namespace string) string {
 
 // GetShortcut returns a shortcut by name
 func (c *Config) GetShortcut(name string) (*ShortcutEntry, bool) {
-	for _, shortcut := range c.Shortcuts {
+	for _, shortcut := range c.Jira.Shortcuts {
 		if shortcut.Name == name {
 			return &shortcut, true
 		}
@@ -214,7 +215,7 @@ func (c *Config) IsLabelAllowed(label string) bool {
 
 // GetBreak returns a break by name
 func (c *Config) GetBreak(name string) (*BreakEntry, bool) {
-	for _, breakEntry := range c.Breaks {
+	for _, breakEntry := range c.Slack.Breaks {
 		if breakEntry.Name == name {
 			return &breakEntry, true
 		}

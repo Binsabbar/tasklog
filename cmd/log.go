@@ -54,9 +54,9 @@ func logUsageFunc(cmd *cobra.Command) error {
 
 	// Try to load config and show available shortcuts
 	cfg, err := config.Load()
-	if err == nil && len(cfg.Shortcuts) > 0 {
+	if err == nil && len(cfg.Jira.Shortcuts) > 0 {
 		fmt.Fprintf(cmd.OutOrStderr(), "Available Shortcuts:\n")
-		for _, sc := range cfg.Shortcuts {
+		for _, sc := range cfg.Jira.Shortcuts {
 			timeInfo := ""
 			if sc.Time != "" {
 				timeInfo = fmt.Sprintf(" (%s)", sc.Time)

@@ -38,6 +38,24 @@ var KnownIssues = []KnownIssue{
 		LogicFlip:  true,
 		Suggestion: "Replace 'check_for_updates: true' with 'disabled: false' (logic is inverted)",
 	},
+	{
+		Field:      "shortcuts",
+		OldName:    "shortcuts",
+		NewName:    "jira.shortcuts",
+		Severity:   "high",
+		Release:    "v1.0.0-alpha.6",
+		LogicFlip:  false,
+		Suggestion: "Move 'shortcuts' array from root level to under 'jira:' section",
+	},
+	{
+		Field:      "breaks",
+		OldName:    "breaks",
+		NewName:    "slack.breaks",
+		Severity:   "high",
+		Release:    "v1.0.0-alpha.6",
+		LogicFlip:  false,
+		Suggestion: "Move 'breaks' array from root level to under 'slack:' section",
+	},
 }
 
 // ValidateConfig checks a config file for known pre-release breaking changes
@@ -64,11 +82,22 @@ func ValidateConfig(configData []byte) ([]ConfigIssue, error) {
 func checkField(raw map[string]interface{}, known KnownIssue) *ConfigIssue {
 	// Parse field path (e.g., "update.check_for_updates" -> ["update", "check_for_updates"])
 	parts := strings.Split(known.Field, ".")
-	if len(parts) < 2 {
+
+	// For root-level fields (like "shortcuts" or "breaks")
+	if len(parts) == 1 {
+		if _, exists := raw[known.OldName]; exists {
+			return &ConfigIssue{
+				Field:       known.Field,
+				Issue:       fmt.Sprintf("Deprecated field '%s' found at root level (moved in %s)", known.OldName, known.Release),
+				Suggestion:  known.Suggestion,
+				Severity:    known.Severity,
+				ReleaseNote: known.Release,
+			}
+		}
 		return nil
 	}
 
-	// Navigate to the parent section
+	// Navigate to the parent section for nested fields
 	current := raw
 	for i := range len(parts) - 1 { //nolint:intrange // using traditional loop for clarity
 		next, ok := current[parts[i]].(map[string]interface{})
