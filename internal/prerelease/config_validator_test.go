@@ -25,29 +25,6 @@ update:
 			expectFields: []string{"update.check_for_updates"},
 		},
 		{
-			name: "detects disable_update_check field",
-			config: `version: 1
-jira:
-  url: https://example.com
-update:
-  disable_update_check: false
-  check_interval: 24h`,
-			expectIssues: 1,
-			expectFields: []string{"update.disable_update_check"},
-		},
-		{
-			name: "detects both deprecated fields",
-			config: `version: 1
-jira:
-  url: https://example.com
-update:
-  check_for_updates: true
-  disable_update_check: false
-  check_interval: 24h`,
-			expectIssues: 2,
-			expectFields: []string{"update.check_for_updates", "update.disable_update_check"},
-		},
-		{
 			name: "no issues with correct field name",
 			config: `version: 1
 jira:
@@ -131,7 +108,7 @@ func TestFormatIssues(t *testing.T) {
 					Field:       "update.check_for_updates",
 					Issue:       "Deprecated field",
 					Suggestion:  "Use 'disabled' instead",
-					ReleaseNote: "v1.0.0-alpha.2",
+					ReleaseNote: "v1.0.0-alpha.4",
 				},
 			},
 			expectContains: []string{
@@ -139,7 +116,6 @@ func TestFormatIssues(t *testing.T) {
 				"update.check_for_updates",
 				"Deprecated field",
 				"Use 'disabled' instead",
-				"tasklog init --update",
 			},
 		},
 		{
