@@ -35,6 +35,7 @@ type UpdateNotification struct {
 	LatestVersion  string
 	IsPreRelease   bool
 	ReleaseURL     string
+	Dismissed      bool // User dismissed this update
 }
 
 // UpdateCache stores cached update information
@@ -83,13 +84,14 @@ func (u *Updater) CheckForUpdate(currentVersion, channel string) (*UpdateNotific
 	// First check cache for existing notification
 	cache := u.getCachedUpdate()
 	if cache != nil && !u.shouldCheckForUpdate(cache) {
-		// Return cached notification
+		// Return cached notification (including dismissed status)
 		return &UpdateNotification{
 			Available:      cache.UpdateAvailable,
 			CurrentVersion: cache.CurrentVersion,
 			LatestVersion:  cache.LatestVersion,
 			IsPreRelease:   cache.IsPreRelease,
 			ReleaseURL:     cache.ReleaseURL,
+			Dismissed:      cache.Dismissed,
 		}, nil
 	}
 
@@ -144,7 +146,10 @@ func (u *Updater) CheckForUpdate(currentVersion, channel string) (*UpdateNotific
 		}, nil
 	}
 
-	// Save update cache with update availability info
+	// Update is available
+	// Always reset dismissed flag when we re-check GitHub (after check interval):
+	// - If this is a newer version: show notification
+	// - If same version was dismissed: show reminder (interval passed)
 	u.saveUpdateCache(&UpdateCache{
 		LastCheck:       time.Now(),
 		UpdateAvailable: true,
@@ -152,7 +157,7 @@ func (u *Updater) CheckForUpdate(currentVersion, channel string) (*UpdateNotific
 		LatestVersion:   latest.String(),
 		IsPreRelease:    release.Prerelease,
 		ReleaseURL:      u.githubClient.GetReleaseURL(release.TagName),
-		Dismissed:       false,
+		Dismissed:       false, // Always false after check interval
 	})
 
 	return &UpdateNotification{
@@ -301,6 +306,19 @@ func (u *Updater) ClearUpdateCache() error {
 	if err := os.Remove(cacheFile); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to remove cache file: %w", err)
 	}
+	return nil
+}
+
+// DismissUpdate marks the current update notification as dismissed
+func (u *Updater) DismissUpdate() error {
+	cache := u.getCachedUpdate()
+	if cache == nil || !cache.UpdateAvailable {
+		return fmt.Errorf("no update available to dismiss")
+	}
+
+	// Mark as dismissed and save
+	cache.Dismissed = true
+	u.saveUpdateCache(cache)
 	return nil
 }
 

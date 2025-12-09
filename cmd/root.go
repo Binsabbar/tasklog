@@ -92,13 +92,19 @@ func checkForUpdates() {
 
 	// Display notification if update is available
 	if notification.Available {
+		// Skip if user dismissed this update
+		if notification.Dismissed {
+			return
+		}
+
 		preReleaseTag := ""
 		if notification.IsPreRelease {
 			preReleaseTag = " (pre-release)"
 		}
 		fmt.Fprintf(os.Stderr, "\n📦 New version available: %s → %s%s\n", notification.CurrentVersion, notification.LatestVersion, preReleaseTag)
-		fmt.Fprintf(os.Stderr, "   Run 'tasklog upgrade' to update\n")
-		fmt.Fprintf(os.Stderr, "   Release notes: %s\n\n", notification.ReleaseURL)
+		fmt.Fprintf(os.Stderr, "   ⬆️  Run 'tasklog upgrade install' to update\n")
+		fmt.Fprintf(os.Stderr, "   📄 Release notes: %s\n", notification.ReleaseURL)
+		fmt.Fprintf(os.Stderr, "   ⚠️  To dismiss this notification: 'tasklog upgrade dismiss'\n\n")
 	}
 }
 
