@@ -75,9 +75,9 @@ type BreakEntry struct {
 
 // UpdateConfig contains update checking configuration (optional)
 type UpdateConfig struct {
-	CheckForUpdates bool   `yaml:"check_for_updates"` // Whether to check for updates (default: true)
-	CheckInterval   string `yaml:"check_interval"`    // Check interval as duration string like "24h", "1d" (default: "24h")
-	Channel         string `yaml:"channel"`           // Release channel: "", "stable", "alpha", "beta", "rc" (default: auto-detect from current version)
+	Disabled      bool   `yaml:"disabled"`       // Whether to disable update checking (default: false, meaning checks are enabled)
+	CheckInterval string `yaml:"check_interval"` // Check interval as duration string like "24h", "1d" (default: "24h")
+	Channel       string `yaml:"channel"`        // Release channel: "", "stable", "alpha", "beta", "rc" (default: auto-detect from current version)
 }
 
 // Load loads configuration from the config file
@@ -111,9 +111,7 @@ func Load() (*Config, error) {
 	if config.Update.CheckInterval == "" {
 		config.Update.CheckInterval = "24h" // Default: check once per day
 	}
-	// CheckForUpdates defaults to true (zero value of bool is false, so we need explicit check)
-	// If the user hasn't set it, it will be false, and we should default to true
-	// This is handled in the usage by checking if the config exists and defaulting appropriately
+	// Disabled defaults to false (meaning update checks are enabled by default)
 
 	// Validate configuration
 	if err := config.Validate(); err != nil {
