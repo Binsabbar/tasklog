@@ -13,9 +13,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var upgradeCmd = &cobra.Command{
-	Use:   "upgrade",
-	Short: "Upgrade tasklog to the latest version",
+var installCmd = &cobra.Command{
+	Use:   "install",
+	Short: "Install/upgrade tasklog to the latest version",
 	Long: `Download and install the latest version of tasklog from GitHub releases.
 
 This command will:
@@ -43,7 +43,50 @@ you may need to run this command with sudo.` + configHelp,
 	RunE: runUpgrade,
 }
 
+var upgradeCmd = &cobra.Command{
+	Use:   "upgrade",
+	Short: "Manage tasklog upgrades",
+	Long:  `Manage tasklog version upgrades.`,
+}
+
+var dismissCmd = &cobra.Command{
+	Use:   "dismiss",
+	Short: "Dismiss the current update notification",
+	Long: `Dismiss the current update notification. You will see the notification again
+after the next check interval (default: 24h), or immediately if a newer version
+is released.`,
+	Run: func(_ *cobra.Command, _ []string) {
+		// Get config dir for cache
+		configDir, err := config.GetConfigDir()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: failed to get config directory: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Load config for check interval
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: failed to load config: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Create updater
+		upd := updater.NewUpdater(githubOwner, githubRepo, configDir, cfg.Update.CheckInterval)
+
+		// Dismiss update
+		if err := upd.DismissUpdate(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Println("✓ Update notification dismissed")
+		fmt.Printf("You'll be reminded again in %s, or immediately if a newer version is released.\n", cfg.Update.CheckInterval)
+	},
+}
+
 func init() {
+	upgradeCmd.AddCommand(installCmd)
+	upgradeCmd.AddCommand(dismissCmd)
 	rootCmd.AddCommand(upgradeCmd)
 }
 

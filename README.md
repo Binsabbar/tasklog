@@ -435,6 +435,33 @@ If logging to Jira or Tempo fails, entries are saved locally. Retry syncing:
 tasklog sync
 ```
 
+### Automatic Updates
+
+Tasklog checks for new releases and notifies you when an update is available. By default, it checks every 24 hours.
+
+**Upgrade to latest version:**
+```bash
+tasklog upgrade install
+```
+
+**Dismiss update notification:**
+If you want to temporarily dismiss the update notification, you can do so with:
+```bash
+tasklog upgrade dismiss
+```
+The notification will reappear after the next check interval (default: 24 hours), or immediately if a newer version is released.
+
+**Configure update checks:**
+Edit your config file to customize update behavior:
+```yaml
+update:
+  disabled: false           # Set to true to disable update checks
+  check_interval: "24h"     # How often to check (e.g., "1d", "12h", "1w")
+  channel: ""               # Release channel: "" (stable), "alpha", "beta", "rc"
+```
+
+**Note:** Update checking is only available in official releases (including pre-releases). Development builds skip update checks automatically.
+
 ## Time Format Support
 
 Tasklog supports multiple time formats, all rounded to the nearest 5 minutes:
