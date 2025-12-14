@@ -21,12 +21,10 @@ type MigrationSummary struct {
 type MigrationFunc func(raw map[string]interface{}, summary *MigrationSummary) error
 
 // migrations is the registry of version-specific migration functions
-// Each migration bumps the version by 1
-var migrations = map[int]MigrationFunc{
-	0: migrateV0ToV1, // v0 (no version field) -> v1 (adds task_statuses, uses nested shortcuts/breaks)
-}
+// Currently empty as we're in alpha phase - v1 is the initial release version
+var migrations = map[int]MigrationFunc{}
 
-// MigrateConfig analyzes and migrates a config file to the latest schema
+// MigrateConfig analyzes a config file and detects missing optional sections
 // Returns the migrated content and a summary of changes
 func MigrateConfig(data []byte) ([]byte, *MigrationSummary, error) {
 	// Parse the YAML into a generic structure
@@ -35,7 +33,8 @@ func MigrateConfig(data []byte) ([]byte, *MigrationSummary, error) {
 		return nil, nil, fmt.Errorf("failed to parse config: %w", err)
 	}
 
-	// Detect current version (default to 0 if not present)
+	// Detect current version
+	// For alpha phase: configs must have version field set to 1
 	currentVersion := 0
 	if v, ok := raw["version"]; ok {
 		if vInt, isInt := v.(int); isInt {
@@ -43,17 +42,28 @@ func MigrateConfig(data []byte) ([]byte, *MigrationSummary, error) {
 		}
 	}
 
+	// Validate version is present (required for v1 configs)
+	if currentVersion == 0 {
+		return nil, nil, fmt.Errorf(
+			"missing version field - please update your config to v%d structure (see README.md or config.example.yaml)",
+			CurrentConfigVersion,
+		)
+	}
+
 	// Validate version is not from the future
 	if currentVersion > CurrentConfigVersion {
 		return nil, nil, fmt.Errorf(
-			"config version %d is newer than supported version %d - please upgrade tasklog",
+			"config version %d is newer than supported version %d",
 			currentVersion, CurrentConfigVersion,
 		)
 	}
 
-	// Validate the config matches its declared version (even if no migration needed)
-	if err := validateConfigVersion(raw, currentVersion); err != nil {
-		return nil, nil, fmt.Errorf("config validation failed: %w", err)
+	// For alpha phase: Only support v1 configs
+	if currentVersion < CurrentConfigVersion {
+		return nil, nil, fmt.Errorf(
+			"config version %d is not supported - please update your config to v%d structure (see README.md or config.example.yaml)",
+			currentVersion, CurrentConfigVersion,
+		)
 	}
 
 	// Detect missing optional sections
@@ -312,115 +322,4 @@ func ApplyOptionalSections(userConfig []byte, missingSections []string) ([]byte,
 	}
 
 	return result, nil
-}
-
-// VersionValidator validates that a config matches its declared version
-type VersionValidator func(raw map[string]interface{}) error
-
-// versionValidators maps version numbers to their validation functions
-var versionValidators = map[int]VersionValidator{
-	0: validateV0Config,
-	1: validateV1Config,
-}
-
-// validateConfigVersion validates that the config structure matches its declared version
-func validateConfigVersion(raw map[string]interface{}, version int) error {
-	validator, exists := versionValidators[version]
-	if !exists {
-		// No validator means we accept it (for forward compatibility within same major version)
-		return nil
-	}
-	return validator(raw)
-}
-
-// validateV0Config validates v0 (legacy) config structure
-// V0 configs may have user_token and may be missing task_statuses
-func validateV0Config(raw map[string]interface{}) error {
-	// V0 is lenient - just check basic structure exists
-	if _, hasJira := raw["jira"]; !hasJira {
-		return fmt.Errorf("v0 config must have 'jira' section")
-	}
-
-	return nil
-}
-
-// validateV1Config validates v1 config structure
-// v1 requires shortcuts under jira and breaks under slack (not at root)
-func validateV1Config(raw map[string]interface{}) error {
-	// Basic structure check - jira section must exist
-	if _, hasJira := raw["jira"]; !hasJira {
-		return fmt.Errorf("v1 config must have 'jira' section")
-	}
-
-	// Check that shortcuts/breaks are not at root level (they should be nested)
-	if _, hasShortcuts := raw["shortcuts"]; hasShortcuts {
-		return fmt.Errorf("v1 config should not have 'shortcuts' at root level (should be under jira)")
-	}
-	if _, hasBreaks := raw["breaks"]; hasBreaks {
-		return fmt.Errorf("v1 config should not have 'breaks' at root level (should be under slack)")
-	}
-
-	return nil
-}
-
-// migrateV0ToV1 migrates config from v0 (no version) to v1
-// Changes:
-// - Adds jira.task_statuses (as comment if missing)
-// - Moves shortcuts from root level to jira.shortcuts (if present)
-// - Moves breaks from root level to slack.breaks (if present)
-// - No changes to Slack fields (user_token is still valid)
-//
-// Note on nested optional fields:
-// Nested optional fields within required sections (like jira.task_statuses) are
-// handled here in version-specific migration functions. This is intentional because:
-// 1. These fields may have version-specific behavior or defaults
-// 2. Migration functions can add them with appropriate comments/examples
-// 3. They're tied to specific version changes in the schema
-//
-// Top-level optional sections (labels) are detected automatically
-// by detectMissingOptionalSections() without manual updates.
-// shortcuts and breaks are now nested under jira/slack in v1.
-func migrateV0ToV1(raw map[string]interface{}, summary *MigrationSummary) error {
-	// Check for missing jira.task_statuses
-	if jiraSection, ok := raw["jira"].(map[string]interface{}); ok {
-		if _, hasTaskStatuses := jiraSection["task_statuses"]; !hasTaskStatuses {
-			summary.MissingFields = append(summary.MissingFields, "jira.task_statuses")
-		}
-	}
-
-	// Move shortcuts under jira if they exist at root level
-	if shortcuts, hasShortcuts := raw["shortcuts"]; hasShortcuts {
-		// Ensure jira section exists
-		jiraSection, ok := raw["jira"].(map[string]interface{})
-		if !ok {
-			jiraSection = make(map[string]interface{})
-			raw["jira"] = jiraSection
-		}
-
-		// Move shortcuts to jira.shortcuts
-		jiraSection["shortcuts"] = shortcuts
-		delete(raw, "shortcuts")
-
-		summary.DeprecatedFields = append(summary.DeprecatedFields, "shortcuts (moved to jira.shortcuts)")
-		summary.HasDeprecatedFields = true
-	}
-
-	// Move breaks under slack if they exist at root level
-	if breaks, hasBreaks := raw["breaks"]; hasBreaks {
-		// Ensure slack section exists
-		slackSection, ok := raw["slack"].(map[string]interface{})
-		if !ok {
-			slackSection = make(map[string]interface{})
-			raw["slack"] = slackSection
-		}
-
-		// Move breaks to slack.breaks
-		slackSection["breaks"] = breaks
-		delete(raw, "breaks")
-
-		summary.DeprecatedFields = append(summary.DeprecatedFields, "breaks (moved to slack.breaks)")
-		summary.HasDeprecatedFields = true
-	}
-
-	return nil
 }

@@ -14,13 +14,14 @@ func TestUpdateExistingConfig_Integration(t *testing.T) {
 	tests := []struct {
 		name                   string
 		initialConfig          string
+		expectError            bool
 		expectNeedsUpdate      bool
 		expectDeprecatedFields []string
 		expectMissingFields    []string
 		shouldNotContain       []string
 	}{
 		{
-			name: "adds task_statuses to v0 config with user_token",
+			name: "v0 config (no version) should error",
 			initialConfig: `jira:
   url: "https://example.atlassian.net"
   username: "user@example.com"
@@ -34,11 +35,10 @@ slack:
 database:
   path: ""
 `,
-			expectNeedsUpdate:   true,
-			expectMissingFields: []string{"jira.task_statuses"},
+			expectError: true,
 		},
 		{
-			name: "v0 config with root-level shortcuts/breaks migrates to v1 nested structure",
+			name: "v0 config with root-level shortcuts/breaks should error",
 			initialConfig: `update:
   disabled: false
   check_interval: "24h"
@@ -68,20 +68,7 @@ breaks:
     duration: 60
     emoji: ":fork_and_knife:"
 `,
-			expectNeedsUpdate: true, // v0 needs migration to v1 (moves shortcuts/breaks to nested)
-		},
-		{
-			name: "adds missing task_statuses only",
-			initialConfig: `jira:
-  url: "https://example.atlassian.net"
-  project_key: "PROJ"
-
-slack:
-  user_token: "xoxp-token"
-  channel_id: "C123"
-`,
-			expectNeedsUpdate:   true,
-			expectMissingFields: []string{"jira.task_statuses"},
+			expectError: true,
 		},
 	}
 
@@ -103,6 +90,14 @@ slack:
 			}
 
 			updatedData, summary, err := config.MigrateConfig(data)
+
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("expected error for v0 config, got nil")
+				}
+				return
+			}
+
 			if err != nil {
 				t.Fatalf("migration failed: %v", err)
 			}
@@ -157,15 +152,18 @@ slack:
 }
 
 func TestUpdateExistingConfig_PreservesValues(t *testing.T) {
-	initialConfig := `jira:
+	initialConfig := `version: 1
+jira:
   url: "https://my-domain.atlassian.net"
   username: "myuser@example.com"
   api_token: "my-secret-token"
   project_key: "MYPROJ"
+  shortcuts: []
 
 slack:
   user_token: "xoxp-preserved"
   channel_id: "C987654"
+  breaks: []
 
 database:
   path: "/custom/path"

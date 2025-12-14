@@ -22,7 +22,7 @@ func TestMigrateConfig(t *testing.T) {
 		shouldNotContain              []string
 	}{
 		{
-			name: "v0 to v1: adds task_statuses and preserves user_token",
+			name: "v0 (no version) config should error",
 			input: `jira:
   url: "https://example.com"
   project_key: "PROJ"
@@ -30,14 +30,10 @@ slack:
   user_token: "xoxp-valid-token"
   channel_id: "C123"
 `,
-			expectNeedsUpdate:   true,
-			expectFromVersion:   0,
-			expectToVersion:     1,
-			expectMissingFields: []string{"jira.task_statuses"},
-			shouldContain:       []string{"version: 1", "user_token: xoxp-valid-token"},
+			expectError: true,
 		},
 		{
-			name: "v0 to v1: detects missing task_statuses",
+			name: "v0 (no version) detects missing version field",
 			input: `jira:
   url: "https://example.com"
   project_key: "PROJ"
@@ -45,39 +41,44 @@ slack:
   user_token: "xoxp-token"
   channel_id: "C123"
 `,
-			expectNeedsUpdate:   true,
-			expectFromVersion:   0,
-			expectToVersion:     1,
-			expectMissingFields: []string{"jira.task_statuses"},
-			shouldContain:       []string{"user_token", "version: 1"},
+			expectError: true,
 		},
 		{
-			name: "v0 to v1: handles missing slack section",
+			name: "v0 (no version) config without slack should error",
 			input: `jira:
   url: "https://example.com"
   project_key: "PROJ"
 `,
-			expectNeedsUpdate:   true,
-			expectFromVersion:   0,
-			expectToVersion:     1,
-			expectMissingFields: []string{"jira.task_statuses"},
-			shouldContain:       []string{"version: 1"},
+			expectError: true,
 		},
 		{
-			name: "v0 to v1: preserves existing values",
-			input: `jira:
+			name: "v1 with all fields: no update needed",
+			input: `version: 1
+jira:
   url: "https://my-domain.atlassian.net"
   username: "user@example.com"
   api_token: "secret-token"
   project_key: "MYPROJ"
+  task_statuses:
+    - "In Progress"
+  shortcuts: []
+tempo:
+  enabled: false
+  api_token: ""
+labels:
+  allowed_labels:
+    - development
 slack:
   user_token: "xoxp-preserved"
   channel_id: "C987654"
+  breaks: []
 database:
   path: "/custom/path"
+update:
+  check_for_updates: true
+  check_interval: 24
 `,
-			expectNeedsUpdate: true,
-			shouldContain:     []string{"my-domain.atlassian.net", "user@example.com", "MYPROJ", "C987654", "/custom/path", "xoxp-preserved"},
+			expectNeedsUpdate: false,
 		},
 	}
 
@@ -244,21 +245,6 @@ slack:
 	}
 }
 
-func TestMigrateConfig_InvalidV1MissingRequiredFields(t *testing.T) {
-	// V1 config missing jira section entirely - should fail
-	input := `version: 1
-slack:
-  bot_token: "xoxb-token"
-`
-	_, _, err := MigrateConfig([]byte(input))
-	if err == nil {
-		t.Error("expected validation error for v1 config missing jira section, got none")
-	}
-	if err != nil && !strings.Contains(err.Error(), "must have 'jira' section") {
-		t.Errorf("expected 'must have jira section' error, got: %v", err)
-	}
-}
-
 func TestMigrateConfig_V1AlreadyUpToDate(t *testing.T) {
 	// v1 config with nested structure (shortcuts under jira, breaks under slack)
 	// This is the current v1 structure - no migration needed
@@ -327,8 +313,8 @@ update:
 	}
 }
 
-func TestMigrateConfig_V0ToV1_Complete(t *testing.T) {
-	// Test complete migration from v0 (no version) to v1
+func TestMigrateConfig_V0ConfigsNotSupported(t *testing.T) {
+	// Test that v0 (no version field) configs are rejected in alpha phase
 	input := `jira:
   url: https://mycompany.atlassian.net
   username: user@example.com
@@ -343,80 +329,28 @@ tempo:
   enabled: true
   api_token: tempo-secret
 `
-	result, summary, err := MigrateConfig([]byte(input))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	_, _, err := MigrateConfig([]byte(input))
+	if err == nil {
+		t.Fatal("expected error for v0 config, got none")
 	}
 
-	if !summary.NeedsUpdate {
-		t.Error("expected NeedsUpdate=true for v0 config")
-	}
-
-	// Should migrate v0→v1 (current version)
-	if summary.FromVersion != 0 || summary.ToVersion != 1 {
-		t.Errorf("expected v0→v1, got v%d→v%d", summary.FromVersion, summary.ToVersion)
-	}
-
-	expectedMissing := []string{"jira.task_statuses"}
-	if len(summary.MissingFields) != len(expectedMissing) {
-		t.Errorf("expected %d missing fields, got %d: %v", len(expectedMissing), len(summary.MissingFields), summary.MissingFields)
-	}
-
-	resultStr := string(result)
-
-	// Should end with version: 1 (current version)
-	if !strings.Contains(resultStr, "version: 1") {
-		t.Error("expected result to contain 'version: 1'")
-	}
-
-	// Should preserve original values
-	if !strings.Contains(resultStr, "mycompany.atlassian.net") {
-		t.Error("expected result to preserve jira URL")
-	}
-	if !strings.Contains(resultStr, "user@example.com") {
-		t.Error("expected result to preserve username")
-	}
-	if !strings.Contains(resultStr, "MYPROJ") {
-		t.Error("expected result to preserve project_key")
-	}
-	if !strings.Contains(resultStr, "C123456") {
-		t.Error("expected result to preserve channel_id")
-	}
-	if !strings.Contains(resultStr, "tempo-secret") {
-		t.Error("expected result to preserve tempo api_token")
-	}
-
-	// Should preserve user_token (not deprecated)
-	if !strings.Contains(resultStr, "xoxp-preserved-token") {
-		t.Error("expected result to preserve user_token")
-	}
-
-	// Should add task_statuses field with comment
-	// Should add task_statuses field with comment
-	if !strings.Contains(resultStr, "task_statuses") {
-		t.Error("expected result to contain new task_statuses field")
-	}
-
-	// Verify YAML is valid and has correct structure
-	var parsed map[string]interface{}
-	if err := yaml.Unmarshal(result, &parsed); err != nil {
-		t.Fatalf("migrated config is not valid YAML: %v", err)
-	}
-
-	if version, ok := parsed["version"].(int); !ok || version != 1 {
-		t.Errorf("expected version=1 in parsed config, got %v", parsed["version"])
+	if !strings.Contains(err.Error(), "missing version field") {
+		t.Errorf("expected 'missing version field' error, got: %v", err)
 	}
 }
 
 func TestMigrateConfig_PreservesComments(t *testing.T) {
-	input := `# Main config file
+	input := `version: 1
+# Main config file
 jira:
   # Production URL
   url: "https://example.com"
   project_key: "PROJ"
+  shortcuts: []
 slack:
   user_token: "xoxp-preserved"  # This is valid in v1
   channel_id: "C123"
+  breaks: []
 `
 	result, summary, err := MigrateConfig([]byte(input))
 	if err != nil {
@@ -424,7 +358,7 @@ slack:
 	}
 
 	if !summary.NeedsUpdate {
-		t.Error("expected config to need update")
+		t.Error("expected config to need update (missing task_statuses)")
 	}
 
 	resultStr := string(result)

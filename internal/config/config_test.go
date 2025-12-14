@@ -279,7 +279,7 @@ func TestLoadConfig_ValidConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
 
-	validConfig := `version: 2
+	validConfig := `version: 1
 jira:
   url: "https://example.atlassian.net"
   username: "user@example.com"

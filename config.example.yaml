@@ -11,6 +11,24 @@ jira:
   task_statuses:
     - "In Progress"
     - "In Review"
+  
+  # Optional: Define shortcuts for quick time logging
+  # Use these with: tasklog log --shortcut daily
+  shortcuts:
+    - name: "daily"
+      task: "PROJ-123"
+      time: "30m"
+      label: "meeting"
+    
+    - name: "standup"
+      task: "PROJ-123"
+      time: "15m"
+      label: "meeting"
+    
+    - name: "code-review"
+      task: "PROJ-456"
+      # time not specified - will prompt user
+      label: "code-review"
 
 # Optional: Tempo configuration (only needed if logging separately to Tempo)
 # If your Jira uses Tempo for worklog tracking, leave this disabled
@@ -30,24 +48,6 @@ labels:
     - "documentation"
     - "bug-fix"
 
-# Optional: Define shortcuts for quick time logging
-# Use these with: tasklog log --shortcut daily
-shortcuts:
-  - name: "daily"
-    task: "PROJ-123"
-    time: "30m"
-    label: "meeting"
-  
-  - name: "standup"
-    task: "PROJ-123"
-    time: "15m"
-    label: "meeting"
-  
-  - name: "code-review"
-    task: "PROJ-456"
-    # time not specified - will prompt user
-    label: "code-review"
-
 # Optional: Database path (defaults to ~/.tasklog/tasklog.db)
 database:
   path: ""
@@ -56,18 +56,18 @@ database:
 slack:
   user_token: "xoxp-your-slack-user-token"  # User OAuth Token (not Bot Token)
   channel_id: "C1234567890"  # Channel ID for break messages
-
-# Optional: Define break types for quick break registration
-breaks:
-  - name: "lunch"
-    duration: 60
-    emoji: ":fork_and_knife:"
   
-  - name: "prayer"
-    duration: 15
-    emoji: ":pray:"
-  
-  - name: "coffee"
-    duration: 10
-    emoji: ":coffee:"
+  # Optional: Define break types for quick break registration
+  breaks:
+    - name: "lunch"
+      duration: 60
+      emoji: ":fork_and_knife:"
+    
+    - name: "prayer"
+      duration: 15
+      emoji: ":pray:"
+    
+    - name: "coffee"
+      duration: 10
+      emoji: ":coffee:"
 

@@ -160,23 +160,27 @@ labels:
     - "documentation"
     - "bug-fix"
 
-# Optional: Define shortcuts for quick time logging
-# Shortcuts allow you to quickly log time without interactive prompts
-shortcuts:
-  - name: "daily"
-    task: "PROJ-123"
-    time: "30m"
-    label: "meeting"
+# Jira shortcuts for quick time logging (defined under jira section above)
+jira:
+  # ... (other jira config)
   
-  - name: "standup"
-    task: "PROJ-123"
-    time: "15m"
-    label: "meeting"
-  
-  - name: "code-review"
-    task: "PROJ-456"
-    # time not specified - will prompt user
-    label: "code-review"
+  # Optional: Define shortcuts for quick time logging
+  # Shortcuts allow you to quickly log time without interactive prompts
+  shortcuts:
+    - name: "daily"
+      task: "PROJ-123"
+      time: "30m"
+      label: "meeting"
+    
+    - name: "standup"
+      task: "PROJ-123"
+      time: "15m"
+      label: "meeting"
+    
+    - name: "code-review"
+      task: "PROJ-456"
+      # time not specified - will prompt user
+      label: "code-review"
 
 # Optional: Database path (defaults to ~/.tasklog/tasklog.db)
 database:
@@ -186,20 +190,20 @@ database:
 slack:
   user_token: "xoxp-your-slack-user-token"  # User OAuth Token (not Bot Token)
   channel_id: "C1234567890"  # Channel ID for break messages
-
-# Optional: Define break types for quick break registration
-breaks:
-  - name: "lunch"
-    duration: 60
-    emoji: ":fork_and_knife:"
   
-  - name: "prayer"
-    duration: 15
-    emoji: ":pray:"
-  
-  - name: "coffee"
-    duration: 10
-    emoji: ":coffee:"
+  # Optional: Define break types for quick break registration
+  breaks:
+    - name: "lunch"
+      duration: 60
+      emoji: ":fork_and_knife:"
+    
+    - name: "prayer"
+      duration: 15
+      emoji: ":pray:"
+    
+    - name: "coffee"
+      duration: 10
+      emoji: ":coffee:"
 ```
 
 ## Getting API Tokens
