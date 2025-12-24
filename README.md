@@ -114,20 +114,25 @@ tasklog init
 
 This creates `~/.tasklog/config.yaml` with an example configuration. Edit it with your credentials.
 
-### Updating Existing Configuration
+### Managing Configuration
 
-If you have an older config file and want to add new fields (or remove deprecated ones), use the update flag:
+View and manage your configuration with the `config` command:
 
 ```bash
-tasklog init --update
+# View the complete example configuration with all available options
+tasklog config example
+
+# Display your current configuration
+tasklog config show
+
+# Compare your config with the example to find missing or deprecated fields
+tasklog config compare
 ```
 
-This will:
-- Remove deprecated fields (e.g., `slack.user_token`)
-- Add new optional fields as comments (e.g., `jira.task_statuses`, `slack.bot_token`, `slack.user_id`)
-- Create a backup at `~/.tasklog/config.yaml.backup`
-- Preserve your existing configuration values
-- Ask for confirmation before making changes
+The `compare` command is especially useful to:
+- Discover new configuration options added in updates
+- Identify deprecated fields that should be removed
+- Ensure your config has all recommended fields
 
 ### Manual Setup
 
