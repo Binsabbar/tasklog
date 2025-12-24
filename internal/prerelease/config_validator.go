@@ -45,7 +45,7 @@ var KnownIssues = []KnownIssue{
 		Severity:   "high",
 		Release:    "v1.0.0-alpha.6",
 		LogicFlip:  false,
-		Suggestion: "Move 'shortcuts' array from root level to under 'jira:' section",
+		Suggestion: "Move 'shortcuts' array from root level to under 'jira:' section (jira.shortcuts)",
 	},
 	{
 		Field:      "breaks",
@@ -54,7 +54,7 @@ var KnownIssues = []KnownIssue{
 		Severity:   "high",
 		Release:    "v1.0.0-alpha.6",
 		LogicFlip:  false,
-		Suggestion: "Move 'breaks' array from root level to under 'slack:' section",
+		Suggestion: "Move 'breaks' array from root level to under 'slack:' section (slack.breaks)",
 	},
 }
 
@@ -139,6 +139,6 @@ func FormatIssues(issues []ConfigIssue) string {
 			sb.WriteString("\n")
 		}
 	}
-
+	sb.WriteString("\n✓  Run tasklog config compare to see detailed differences\n\n")
 	return sb.String()
 }
