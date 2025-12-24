@@ -15,7 +15,12 @@ var initCmd = &cobra.Command{
 	Long: `Creates the configuration directory and an example config file at ~/.tasklog/config.yaml
 
 If a config file already exists, use 'tasklog config example' to view the template
-and update your config manually.` + configHelp,
+and update your config manually.
+
+Helpful commands:
+  tasklog config example  - View the complete example config with all options
+  tasklog config show     - Display your current configuration
+  tasklog config compare  - Compare your config with the example to find missing fields` + configHelp,
 	RunE: runInit,
 }
 
@@ -38,8 +43,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 	// Check if config already exists
 	if _, err := os.Stat(configPath); err == nil {
 		fmt.Printf("Config file already exists at: %s\n", configPath)
-		fmt.Println("\nTo view the example config template, run: tasklog config example")
-		fmt.Println("To reinitialize, delete the existing file and run this command again.")
+		fmt.Println("\nHelpful commands:")
+		fmt.Println("  tasklog config example  - View the complete example config with all options")
+		fmt.Println("  tasklog config show     - Display your current configuration")
+		fmt.Println("  tasklog config compare  - Compare your config with the example to find missing fields")
+		fmt.Println("\nTo reinitialize, delete the existing file and run this command again.")
 		return nil
 	}
 
