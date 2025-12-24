@@ -1,18 +1,12 @@
 package cmd
 
 import (
-	"bufio"
 	"fmt"
 	"os"
-	"strings"
 
 	"tasklog/internal/config"
 
 	"github.com/spf13/cobra"
-)
-
-var (
-	updateConfig bool
 )
 
 var initCmd = &cobra.Command{
@@ -20,14 +14,13 @@ var initCmd = &cobra.Command{
 	Short: "Initialize tasklog configuration",
 	Long: `Creates the configuration directory and an example config file at ~/.tasklog/config.yaml
 
-Use --update to migrate an existing config file to the latest schema.
-This will remove deprecated fields and add new optional fields.` + configHelp,
+If a config file already exists, use 'tasklog config example' to view the template
+and update your config manually.` + configHelp,
 	RunE: runInit,
 }
 
 func init() {
 	rootCmd.AddCommand(initCmd)
-	initCmd.Flags().BoolVar(&updateConfig, "update", false, "Migrate existing config to latest schema (removes deprecated fields, adds new optional fields)")
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
@@ -44,18 +37,10 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	// Check if config already exists
 	if _, err := os.Stat(configPath); err == nil {
-		if updateConfig {
-			return updateExistingConfig(configPath)
-		}
 		fmt.Printf("Config file already exists at: %s\n", configPath)
-		fmt.Println("To update the config with new fields, run: tasklog init --update")
+		fmt.Println("\nTo view the example config template, run: tasklog config example")
 		fmt.Println("To reinitialize, delete the existing file and run this command again.")
 		return nil
-	}
-
-	// If --update flag is used but no config exists, create a new one
-	if updateConfig {
-		fmt.Println("No existing config file found. Creating a new one...")
 	}
 
 	return createNewConfig(configPath)
@@ -91,132 +76,8 @@ func printSuccessMessage(configPath string) {
 	fmt.Printf("6. Run: tasklog log\n")
 }
 
-// updateExistingConfig updates an existing config file using the migration logic
-func updateExistingConfig(configPath string) error {
-	// Read existing config
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return printError("failed to read config file", err)
-	}
-
-	// Run migration
-	updatedData, summary, err := config.MigrateConfig(data)
-	if err != nil {
-		return printError("failed to migrate config", err)
-	}
-
-	// If nothing needs updating, inform the user
-	if !summary.NeedsUpdate {
-		fmt.Printf("✓ Config file is already up to date (version %d)!\n", summary.FromVersion)
-		return nil
-	}
-
-	// Show what will be changed
-	displayMigrationSummary(summary)
-
-	// Ask for confirmation
-	if !confirmMigration(configPath, summary) {
-		fmt.Println("Update cancelled.")
-		return nil
-	}
-
-	// Create backup
-	backupPath := configPath + ".backup"
-	if err := os.WriteFile(backupPath, data, 0600); err != nil {
-		return printError("failed to create backup", err)
-	}
-	fmt.Printf("✓ Backup created at: %s\n", backupPath)
-
-	// Apply optional sections if needed
-	if len(summary.MissingOptionalSections) > 0 {
-		updatedData, err = config.ApplyOptionalSections(updatedData, summary.MissingOptionalSections)
-		if err != nil {
-			return printError("failed to apply optional sections", err)
-		}
-	}
-
-	// Write updated config
-	if err := os.WriteFile(configPath, updatedData, 0600); err != nil {
-		return printError("failed to write updated config", err)
-	}
-
-	displayUpdateSuccess(summary)
-	return nil
-}
-
-// displayMigrationSummary shows what changes will be made
-func displayMigrationSummary(summary *config.MigrationSummary) {
-	isVersionMigration := summary.FromVersion < summary.ToVersion
-	hasMissingOptionalSections := len(summary.MissingOptionalSections) > 0
-
-	if isVersionMigration {
-		fmt.Printf("Config migration required: v%d → v%d\n", summary.FromVersion, summary.ToVersion)
-		if summary.HasDeprecatedFields {
-			fmt.Println("\n⚠️  Deprecated fields to be removed:")
-			for _, field := range summary.DeprecatedFields {
-				fmt.Printf("  - %s\n", field)
-			}
-		}
-		if len(summary.MissingFields) > 0 {
-			fmt.Println("\n✨ New required fields to be added:")
-			for _, field := range summary.MissingFields {
-				fmt.Printf("  - %s\n", field)
-			}
-		}
-	}
-
-	if hasMissingOptionalSections {
-		if !isVersionMigration {
-			fmt.Println("New optional configuration sections available:")
-		}
-		fmt.Println("\n✨ Optional sections to be added:")
-		for _, section := range summary.MissingOptionalSections {
-			fmt.Printf("  - %s (with example values)\n", section)
-		}
-	}
-}
-
-// confirmMigration asks user for confirmation before updating
-func confirmMigration(configPath string, summary *config.MigrationSummary) bool {
-	fmt.Printf("\nA backup will be created at: %s.backup\n", configPath)
-	if summary.FromVersion < summary.ToVersion {
-		fmt.Println("Note: Migration may reformat your YAML file.")
-	}
-	return confirmUpdate("Do you want to proceed with the update?")
-}
-
-// displayUpdateSuccess shows what was changed after successful update
-func displayUpdateSuccess(summary *config.MigrationSummary) {
-	fmt.Println("✓ Config file updated successfully!")
-	fmt.Println("\nChanges made:")
-	if summary.HasDeprecatedFields {
-		fmt.Println("  - Removed deprecated fields")
-	}
-	if len(summary.MissingFields) > 0 {
-		fmt.Println("  - Added new required fields")
-	}
-	if len(summary.MissingOptionalSections) > 0 {
-		fmt.Println("  - Added new optional sections with example values")
-		fmt.Println("\nReview the config file and customize the new sections as needed.")
-	}
-}
-
 // printError prints an error message and returns nil (for cobra command compatibility)
 func printError(message string, err error) error {
 	fmt.Printf("%s: %v\n", message, err)
 	return nil
-}
-
-// confirmUpdate prompts the user for yes/no confirmation
-// Accepts y, yes, Y, Yes, YES (case-insensitive)
-// Returns false on any error or non-affirmative response
-func confirmUpdate(prompt string) bool {
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Printf("%s (y/N): ", prompt)
-	response, err := reader.ReadString('\n')
-	if err != nil {
-		return false
-	}
-	response = strings.ToLower(strings.TrimSpace(response))
-	return response == "y" || response == "yes"
 }
