@@ -37,10 +37,21 @@ This shows the raw YAML content of your config file at ~/.tasklog/config.yaml
 	RunE: runConfigShow,
 }
 
+var configCompareCmd = &cobra.Command{
+	Use:   "compare",
+	Short: "Compare your config with the example",
+	Long: `Compares your configuration with the example config to find missing or extra fields.
+
+This helps you discover new configuration options that have been added,
+or identify deprecated fields that might no longer be needed.`,
+	RunE: runConfigCompare,
+}
+
 func init() {
 	rootCmd.AddCommand(configCmd)
 	configCmd.AddCommand(configExampleCmd)
 	configCmd.AddCommand(configShowCmd)
+	configCmd.AddCommand(configCompareCmd)
 }
 
 func runConfigExample(cmd *cobra.Command, args []string) error {
@@ -80,6 +91,36 @@ func runConfigShow(cmd *cobra.Command, args []string) error {
 	// Print config path and content
 	fmt.Printf("# Configuration file: %s\n\n", configPath)
 	fmt.Print(string(data))
+
+	return nil
+}
+func runConfigCompare(cmd *cobra.Command, args []string) error {
+	// Get config path
+	configPath, err := config.GetConfigPath()
+	if err != nil {
+		return fmt.Errorf("failed to get config path: %w", err)
+	}
+
+	// Check if config exists
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		return fmt.Errorf("config file not found at %s\nRun 'tasklog init' to create one", configPath)
+	}
+
+	// Read user config file
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	// Compare with example
+	result, err := config.CompareWithExample(data)
+	if err != nil {
+		return fmt.Errorf("failed to compare configs: %w", err)
+	}
+
+	// Print comparison results
+	fmt.Printf("Comparing: %s\n\n", configPath)
+	fmt.Print(config.FormatComparisonResult(result))
 
 	return nil
 }
