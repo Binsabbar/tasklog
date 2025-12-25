@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -203,6 +204,13 @@ func TestGetAssetNameForPlatform(t *testing.T) {
 	// Should not be empty
 	if assetName == "" {
 		t.Error("asset name should not be empty")
+	}
+
+	// Verify it uses Go's native arch names (not x86_64 mapping)
+	// Should be like "linux_amd64", "darwin_arm64", etc.
+	expectedFormat := fmt.Sprintf("%s_%s", runtime.GOOS, runtime.GOARCH)
+	if assetName != expectedFormat {
+		t.Errorf("expected asset name '%s', got '%s'", expectedFormat, assetName)
 	}
 }
 
@@ -451,6 +459,85 @@ func TestPerformUpgrade_UserCancellation(t *testing.T) {
 	}
 	if backupPath != "" {
 		t.Errorf("expected empty backup path, got '%s'", backupPath)
+	}
+}
+
+func TestGetUpdateInfo_AssetSelection(t *testing.T) {
+	// Create a test server that returns assets with and without archives
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		// Return a release with multiple assets for the same platform
+		// Archives should be skipped, raw binary should be picked
+		w.Write([]byte(`{
+			"tag_name": "v1.1.0",
+			"name": "Release 1.1.0",
+			"body": "Test release",
+			"prerelease": false,
+			"draft": false,
+			"assets": [
+				{
+					"name": "tasklog_1.1.0_linux_amd64.tar.gz",
+					"browser_download_url": "https://example.com/download.tar.gz"
+				},
+				{
+					"name": "tasklog_1.1.0_linux_amd64.zip",
+					"browser_download_url": "https://example.com/download.zip"
+				},
+				{
+					"name": "tasklog_1.1.0_linux_amd64",
+					"browser_download_url": "https://example.com/download-binary"
+				}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	tmpDir := t.TempDir()
+	updater := NewUpdater("owner", "repo", tmpDir, "24h")
+
+	// Point client to test server
+	updater.githubClient.SetBaseURL(server.URL)
+
+	// We need to match the current runtime OS/Arch for getAssetNameForPlatform() to work in the test
+	// or we can mock getAssetNameForPlatform() if it was possible.
+	// Since we can't easily mock it, we'll just check if it finds *something* if we are on linux/amd64
+	// or we can just verify the logic by seeing if it picks the binary URL.
+	// However, getAssetNameForPlatform returns runtime.GOOS_runtime.GOARCH.
+	// So we need to return assets that match the current platform in the test.
+	platform := fmt.Sprintf("%s_%s", runtime.GOOS, runtime.GOARCH)
+
+	server.Close() // restart with dynamic platform names
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(fmt.Sprintf(`{
+			"tag_name": "v1.1.0",
+			"assets": [
+				{
+					"name": "tasklog_1.1.0_%s.tar.gz",
+					"browser_download_url": "https://example.com/download.tar.gz"
+				},
+				{
+					"name": "tasklog_1.1.0_%s",
+					"browser_download_url": "https://example.com/download-binary"
+				}
+			]
+		}`, platform, platform)))
+	}))
+	defer server.Close()
+	updater.githubClient.SetBaseURL(server.URL)
+
+	info, err := updater.GetUpdateInfo("v1.0.0", "")
+	if err != nil {
+		t.Fatalf("GetUpdateInfo failed: %v", err)
+	}
+
+	if info == nil {
+		t.Fatal("expected update info, got nil")
+	}
+
+	expectedURL := "https://example.com/download-binary"
+	if info.DownloadURL != expectedURL {
+		t.Errorf("expected DownloadURL '%s', got '%s' (it might have picked the archive!)", expectedURL, info.DownloadURL)
 	}
 }
 
