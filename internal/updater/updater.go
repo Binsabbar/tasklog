@@ -217,6 +217,14 @@ func (u *Updater) GetUpdateInfo(currentVersion, channel string) (*UpdateInfo, er
 	actualAssetName := ""
 
 	for _, asset := range release.Assets {
+		// Skip archives as we need a raw binary for atomic replacement.
+		// The updater currently doesn't implement extraction logic.
+		if strings.HasSuffix(asset.Name, ".tar.gz") ||
+			strings.HasSuffix(asset.Name, ".zip") ||
+			strings.HasSuffix(asset.Name, ".tgz") {
+			continue
+		}
+
 		if strings.Contains(asset.Name, assetName) {
 			downloadURL = asset.BrowserDownloadURL
 			actualAssetName = asset.Name
@@ -526,17 +534,9 @@ func getAssetNameForPlatform() string {
 	goos := runtime.GOOS
 	goarch := runtime.GOARCH
 
-	// Map Go's GOARCH to common naming conventions
-	arch := goarch
-	switch goarch {
-	case "amd64":
-		arch = "x86_64"
-	case "386":
-		arch = "i386"
-	}
-
-	// Common patterns: tasklog_darwin_x86_64, tasklog-darwin-arm64, etc.
-	return fmt.Sprintf("%s_%s", goos, arch)
+	// Use Go's native arch names (matches goreleaser's {{ .Os }}_{{ .Arch }} template)
+	// Pattern: tasklog_1.0.0_linux_amd64, tasklog_1.0.0_darwin_arm64
+	return fmt.Sprintf("%s_%s", goos, goarch)
 }
 
 // checkWritePermission checks if we can write to the given path

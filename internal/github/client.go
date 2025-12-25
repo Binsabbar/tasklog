@@ -11,8 +11,6 @@ import (
 )
 
 const (
-	apiURL         = "https://api.github.com/repos/%s/%s/releases/latest"
-	releasesURL    = "https://api.github.com/repos/%s/%s/releases"
 	releaseWebURL  = "https://github.com/%s/%s/releases/tag/%s"
 	defaultTimeout = 10 * time.Second
 )
@@ -38,20 +36,26 @@ type Client struct {
 	owner      string
 	repo       string
 	httpClient *http.Client
+	baseURL    string // Base URL for API (can be overridden in tests)
 }
 
-// NewClient creates a new GitHub API client
 func NewClient(owner, repo string) *Client {
 	return &Client{
 		owner:      owner,
 		repo:       repo,
 		httpClient: &http.Client{Timeout: defaultTimeout},
+		baseURL:    "https://api.github.com",
 	}
+}
+
+// SetBaseURL sets the base URL for API requests (used for testing)
+func (c *Client) SetBaseURL(url string) {
+	c.baseURL = url
 }
 
 // GetLatestRelease fetches the latest stable release
 func (c *Client) GetLatestRelease() (*Release, error) {
-	url := fmt.Sprintf(apiURL, c.owner, c.repo)
+	url := fmt.Sprintf("%s/repos/%s/%s/releases/latest", c.baseURL, c.owner, c.repo)
 	body, err := c.doGetRequest(url)
 	if err != nil {
 		return nil, err
@@ -69,7 +73,7 @@ func (c *Client) GetLatestRelease() (*Release, error) {
 // GetLatestPreRelease fetches the latest release (including pre-releases)
 func (c *Client) GetLatestPreRelease(channel string) (*Release, error) {
 	// Fetch all releases
-	url := fmt.Sprintf(releasesURL, c.owner, c.repo)
+	url := fmt.Sprintf("%s/repos/%s/%s/releases", c.baseURL, c.owner, c.repo)
 	body, err := c.doGetRequest(url)
 	if err != nil {
 		return nil, err
