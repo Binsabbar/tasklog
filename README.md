@@ -32,7 +32,7 @@ An interactive CLI tool for tracking time on Jira tasks with seamless integratio
 To install the latest version of tasklog, run the following command:
 
 ```bash
-curl -L https://raw.githubusercontent.com/Binsabbar/tasklog/main/install.sh | sudo bash -s 1.0.0-alpha.6
+curl -fsSL https://raw.githubusercontent.com/Binsabbar/tasklog/main/install.sh | sudo bash -s 1.0.0-alpha.6
 ```
 
 Available platforms: Linux and macOS (amd64 and arm64)
