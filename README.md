@@ -29,21 +29,10 @@ An interactive CLI tool for tracking time on Jira tasks with seamless integratio
 
 ### Download Pre-built Binary
 
-Download the latest release for your platform from the [Releases page](https://github.com/binsabbar/tasklog/releases):
+To install the latest version of tasklog, run the following command:
 
 ```bash
-# Replace {VERSION}, {OS}, and {ARCH} with your values
-# VERSION: release version (e.g., 1.0.0)
-# OS: darwin or linux
-# ARCH: amd64 or arm64
-curl -LO https://github.com/binsabbar/tasklog/releases/download/v{VERSION}/tasklog_{VERSION}_{OS}_{ARCH}
-chmod +x tasklog_{VERSION}_{OS}_{ARCH}
-sudo mv tasklog_{VERSION}_{OS}_{ARCH} /usr/local/bin/tasklog
-
-# Example for macOS ARM64 (Apple Silicon)
-curl -LO https://github.com/binsabbar/tasklog/releases/download/v1.0.0/tasklog_1.0.0_darwin_arm64
-chmod +x tasklog_1.0.0_darwin_arm64
-sudo mv tasklog_1.0.0_darwin_arm64 /usr/local/bin/tasklog
+curl -fsSL https://raw.githubusercontent.com/Binsabbar/tasklog/main/install.sh | sudo bash -s 1.0.0-alpha.6
 ```
 
 Available platforms: Linux and macOS (amd64 and arm64)
