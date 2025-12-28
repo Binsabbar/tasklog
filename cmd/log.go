@@ -20,6 +20,7 @@ var (
 	taskKey      string
 	timeSpent    string
 	label        string
+	startedAt    string
 )
 
 var logCmd = &cobra.Command{
@@ -43,6 +44,7 @@ func init() {
 	logCmd.Flags().StringVarP(&taskKey, "task", "t", "", "Task key (e.g., PROJ-123)")
 	logCmd.Flags().StringVarP(&timeSpent, "time", "d", "", "Time spent (e.g., 2h 30m, 2.5h, 150m)")
 	logCmd.Flags().StringVarP(&label, "label", "l", "", "Work log label")
+	logCmd.Flags().StringVarP(&startedAt, "at", "a", "", "When work was performed (e.g., 2pm, yesterday, 2h ago)")
 
 	// Set custom usage template to show available shortcuts
 	logCmd.SetUsageFunc(logUsageFunc)
@@ -204,10 +206,32 @@ func runLog(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get comment: %w", err)
 	}
 
+	// Get start time
+	var started time.Time
+	if startedAt != "" {
+		// Parse from --at flag
+		var err error
+		started, err = timeparse.ParseDateTime(startedAt)
+		if err != nil {
+			return fmt.Errorf("invalid time format for --at: %w", err)
+		}
+	} else if shortcutName == "" && taskKey == "" {
+		// Interactive mode AND not using shortcuts: prompt for start time
+		var err error
+		started, err = ui.PromptStartTime()
+		if err != nil {
+			return fmt.Errorf("failed to get start time: %w", err)
+		}
+	} else {
+		// Shortcut or CLI mode without --at: use current time
+		started = time.Now()
+	}
+
 	// Confirm before logging
 	fmt.Printf("\n")
 	fmt.Printf("Task:    %s - %s\n", selectedIssue.Key, selectedIssue.Fields.Summary)
 	fmt.Printf("Time:    %s\n", timeparse.Format(timeSeconds))
+	fmt.Printf("Started: %s\n", started.Format("Mon Jan 2 15:04"))
 	fmt.Printf("Label:   %s\n", selectedLabel)
 	if comment != "" {
 		fmt.Printf("Comment: %s\n", comment)
@@ -225,7 +249,6 @@ func runLog(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create time entry
-	now := time.Now()
 	entry := &storage.TimeEntry{
 		IssueKey:         selectedIssue.Key,
 		IssueSummary:     selectedIssue.Fields.Summary,
@@ -233,7 +256,7 @@ func runLog(cmd *cobra.Command, args []string) error {
 		TimeSpent:        timeparse.Format(timeSeconds),
 		Label:            selectedLabel,
 		Comment:          comment,
-		Started:          now,
+		Started:          started,
 		SyncedToJira:     false,
 		SyncedToTempo:    false,
 	}
@@ -247,7 +270,7 @@ func runLog(cmd *cobra.Command, args []string) error {
 
 	// Log to Jira
 	log.Debug().Msg("Logging to Jira")
-	worklog, err := jiraClient.AddWorklog(selectedIssue.Key, timeSeconds, now, comment)
+	worklog, err := jiraClient.AddWorklog(selectedIssue.Key, timeSeconds, started, comment)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to log to Jira")
 		fmt.Printf("⚠ Failed to log to Jira: %v\n", err)

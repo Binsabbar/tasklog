@@ -1,0 +1,3 @@
+kind: added
+body: Add datetime support for logging past time entries using --at flag and interactive prompts
+time: 2025-12-28T16:40:01.347094+03:00

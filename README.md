@@ -83,19 +83,23 @@ docker run \
 1. **Download (or Build) the binary**
 
 2. **Initialize configuration:**
+
    ```bash
    ./bin/tasklog init
    ```
 
 3. **Edit config file with your credentials:**
+
    ```bash
    vim ~/.tasklog/config.yaml
    ```
+
    - Add your Jira URL, username, and API token
    - Add your Tempo API token
    - Optionally configure labels and shortcuts
 
 4. **Start logging time:**
+
    ```bash
    ./bin/tasklog log
    ```
@@ -130,6 +134,7 @@ tasklog config compare
 ```
 
 The `compare` command is especially useful to:
+
 - Discover new configuration options added in updates
 - Identify deprecated fields that should be removed
 - Ensure your config has all recommended fields
@@ -216,34 +221,41 @@ slack:
 ### Jira Configuration
 
 **Finding Your Jira URL:**
+
 - Your Jira Cloud URL is typically: `https://your-domain.atlassian.net`
 - Example: `https://mycompany.atlassian.net`
 
 **Getting Jira API Token:**
-1. Go to https://id.atlassian.com/manage-profile/security/api-tokens
+
+1. Go to <https://id.atlassian.com/manage-profile/security/api-tokens>
 2. Click "Create API token"
 3. Give it a descriptive name (e.g., "Tasklog CLI")
 4. Copy the token immediately (you won't be able to see it again)
 
 **Your Jira Username:**
+
 - Use the email address associated with your Jira account
 - Example: `your-email@example.com`
 
 **Project Key:**
+
 - This filters tasks to a specific Jira project
 - Found in task IDs (e.g., `PROJ-123` → project key is `PROJ`)
 - Or check your Jira project settings
 
 **Task Statuses (Optional):**
+
 - By default, tasklog shows tasks with status "In Progress"
 - You can configure additional statuses to include (e.g., "In Review", "Testing")
 - Add to config:
+
   ```yaml
   jira:
     task_statuses:
       - "In Progress"
       - "In Review"
   ```
+
 - If not specified, defaults to `["In Progress"]`
 
 ### Tempo Configuration
@@ -251,11 +263,13 @@ slack:
 **Important:** Tasklog logs time **only to Jira**. When Tempo is installed in your Jira workspace, Jira automatically creates corresponding Tempo worklogs.
 
 The Tempo API token is **required** because:
+
 - The `summary` command fetches logged time **only from Tempo** (not Jira)
 - Tempo serves as the source of truth for your time tracking data
 - This allows accurate comparison between local cache and actual logged time
 
 **Getting Tempo API Token:**
+
 1. In Jira, go to **Tempo** in the top navigation
 2. Click **Settings** (gear icon)
 3. Select **API Integration** from the left sidebar
@@ -264,13 +278,15 @@ The Tempo API token is **required** because:
 6. Copy the generated token and add it to your config
 
 **Configuration Options:**
+
 - `tempo.enabled: true` - Tasklog will fetch and display Tempo worklogs in the summary
 - `tempo.enabled: false` - Tasklog will not fetch Tempo data (you won't see summary information)
 
 **Note:** Tempo must be installed in your Jira workspace for time tracking to work properly
 
 **Slack User Token (Optional for break notifications):**
-1. Go to https://api.slack.com/apps
+
+1. Go to <https://api.slack.com/apps>
 2. Create a new app or select existing
 3. Go to "OAuth & Permissions"
 4. Add **Bot Token Scopes**: `chat:write`
@@ -288,7 +304,7 @@ Slack integration is required only if you want to use the `tasklog break` comman
 #### Creating a Slack App
 
 1. **Visit Slack API Dashboard**
-   - Go to https://api.slack.com/apps
+   - Go to <https://api.slack.com/apps>
    - Click "Create New App"
    - Choose "From scratch"
    - Give it a name (e.g., "Tasklog Break Notifications")
@@ -301,7 +317,7 @@ Slack integration is required only if you want to use the `tasklog break` comman
      - `chat:write` - **Required:** Post messages to channels
    - Under **"User Token Scopes"**, add:
      - `users.profile:write` - **Required:** Update your own status
-   
+
    **Important:** You need BOTH bot and user scopes for break notifications to work fully
 
 3. **Install App to Workspace**
@@ -335,6 +351,7 @@ tasklog break coffee
 ```
 
 You should see:
+
 - Your Slack status updated with coffee emoji
 - A message posted in the configured channel
 - Status automatically cleared after the break duration
@@ -350,6 +367,7 @@ tasklog log
 ```
 
 This will:
+
 1. Show your in-progress Jira tasks
 2. Let you select a task (or search/enter manually)
 3. Prompt for time spent
@@ -373,6 +391,32 @@ tasklog log daily --time 45m
 # Use different shortcut
 tasklog log standup
 ```
+
+### Logging Time
+
+Log time for current moment:
+
+```bash
+tasklog log daily -d 2h
+```
+
+Log time for past work using `--at` flag:
+
+```bash
+# Specific time today
+tasklog log -t PROJ-123 -d 1h --at 2pm
+
+# Yesterday
+tasklog log daily -d 30m --at yesterday
+
+# Specific time yesterday  
+tasklog log daily -d 1h --at "yesterday 3pm"
+
+# Relative time
+tasklog log -t PROJ-123 -d 2h --at "2 hours ago"
+```
+
+Interactive mode will automatically prompt you if you want to log for a past time.
 
 ### Command-Line Flags
 
@@ -410,12 +454,14 @@ tasklog break coffee
 ```
 
 This will:
+
 1. Update your Slack status with the break emoji and duration
 2. Post a formatted message in the configured channel (e.g., "🔔 Taking a *lunch break* — Back in 60 minutes at *2:30 PM*")
 3. Set Slack status to auto-expire after the break duration
 4. Display confirmation with return time
 
 **Example Slack Message:**
+
 ```
 🔔 Taking a lunch break — Back in 60 minutes at 2:30 PM
 ```
@@ -424,6 +470,7 @@ This will:
 tasklog summary
 
 Example output:
+
 ```
 ═══════════════════════════════════════════
 Today's Summary (3 entries)
@@ -449,19 +496,23 @@ tasklog sync
 Tasklog checks for new releases and notifies you when an update is available. By default, it checks every 24 hours.
 
 **Upgrade to latest version:**
+
 ```bash
 tasklog upgrade install
 ```
 
 **Dismiss update notification:**
 If you want to temporarily dismiss the update notification, you can do so with:
+
 ```bash
 tasklog upgrade dismiss
 ```
+
 The notification will reappear after the next check interval (default: 24 hours), or immediately if a newer version is released.
 
 **Configure update checks:**
 Edit your config file to customize update behavior:
+
 ```yaml
 update:
   disabled: false           # Set to true to disable update checks
@@ -482,6 +533,7 @@ Tasklog supports multiple time formats, all rounded to the nearest 5 minutes:
 - `2h` - Hours only
 
 Examples:
+
 - `2h 32m` → rounded to `2h 30m` (150 minutes)
 - `2h 27m` → rounded to `2h 25m` (145 minutes)
 - `1m` → rounded to `5m`
@@ -550,7 +602,8 @@ Contributions are welcome! Please feel free to submit issues or pull requests.
 
 This entire project was built using **GitHub Copilot** as an AI pair programming partner. From initial concept to full implementation, every line of code, configuration, test, and documentation was created through natural language conversations and AI assistance.
 
-### What Was Built:
+### What Was Built
+
 - Complete Go CLI application with Cobra framework
 - Jira Cloud REST API v3 integration
 - Tempo API v4 integration  

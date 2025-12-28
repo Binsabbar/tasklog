@@ -2,8 +2,10 @@ package ui
 
 import (
 	"fmt"
+	"time"
 
 	"tasklog/internal/jira"
+	"tasklog/internal/timeparse"
 
 	"github.com/AlecAivazis/survey/v2"
 )
@@ -209,4 +211,38 @@ func Confirm(message string) (bool, error) {
 	}
 
 	return confirmed, nil
+}
+
+// PromptStartTime prompts user for when they worked (optional)
+// Returns time.Now() if user wants current time, otherwise parsed datetime
+func PromptStartTime() (time.Time, error) {
+	useNow, err := Confirm("Log for current time?")
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	if useNow {
+		return time.Now(), nil
+	}
+
+	var whenStr string
+	prompt := &survey.Input{
+		Message: "When did you work on this?",
+		Help:    "Examples: 2pm, yesterday 3pm, 2 hours ago, 14:30",
+	}
+
+	if err := survey.AskOne(prompt, &whenStr, survey.WithValidator(survey.Required)); err != nil {
+		return time.Time{}, err
+	}
+
+	// We need to import timeparse, but can't introduce import cycle if UI is imported by timeparse.
+	// However, looking at imports, cmd imports ui and timeparse. ui doesn't import timeparse.
+	// Oh wait, PromptStartTime needs to call timeparse.ParseDateTime.
+	// Check imports in internal/ui/prompts.go.
+	// It imports "tasklog/internal/jira".
+	// Make sure timeparse is not importing ui.
+	// internal/timeparse/datetime.go imports "github.com/olebedev/when" etc. No internal imports.
+
+	// So we can import timeparse here.
+	return timeparse.ParseDateTime(whenStr)
 }
