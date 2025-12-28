@@ -50,8 +50,9 @@ case "$ARCH" in
         ;;
 esac
 
-BINARY_NAME="tasklog_${VERSION}_${OS}_${ARCH}"
-DOWNLOAD_URL="https://github.com/Binsabbar/tasklog/releases/download/v${VERSION}/${BINARY_NAME}"
+ARCHIVE_NAME="tasklog_${VERSION}_${OS}_${ARCH}.tar.gz"
+DOWNLOAD_URL="https://github.com/Binsabbar/tasklog/releases/download/v${VERSION}/${ARCHIVE_NAME}"
+CHECKSUM_URL="https://github.com/Binsabbar/tasklog/releases/download/v${VERSION}/checksums.txt"
 INSTALL_DIR="/usr/local/bin"
 TARGET_PATH="${INSTALL_DIR}/tasklog"
 
@@ -73,14 +74,57 @@ fi
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-echo "Downloading ${DOWNLOAD_URL}..."
-if ! curl -fsSL -o "${TMP_DIR}/${BINARY_NAME}" "$DOWNLOAD_URL"; then
+# Download the archive
+echo "Downloading ${ARCHIVE_NAME}..."
+if ! curl -fsSL -o "${TMP_DIR}/${ARCHIVE_NAME}" "$DOWNLOAD_URL"; then
     echo "Error: Failed to download binary. Please check the version and internet connection."
     exit 1
 fi
 
-chmod +x "${TMP_DIR}/${BINARY_NAME}"
-mv "${TMP_DIR}/${BINARY_NAME}" "$TARGET_PATH"
+# Download checksums file
+echo "Downloading checksums..."
+if ! curl -fsSL -o "${TMP_DIR}/checksums.txt" "$CHECKSUM_URL"; then
+    echo "Error: Failed to download checksums file."
+    exit 1
+fi
+
+# Verify checksum
+echo "Verifying checksum..."
+EXPECTED_CHECKSUM=$(grep "${ARCHIVE_NAME}" "${TMP_DIR}/checksums.txt" | awk '{print $1}')
+if [ -z "$EXPECTED_CHECKSUM" ]; then
+    echo "Error: Could not find checksum for ${ARCHIVE_NAME} in checksums.txt"
+    exit 1
+fi
+
+# Calculate checksum (use shasum on macOS, sha256sum on Linux)
+if command -v sha256sum &> /dev/null; then
+    ACTUAL_CHECKSUM=$(sha256sum "${TMP_DIR}/${ARCHIVE_NAME}" | awk '{print $1}')
+elif command -v shasum &> /dev/null; then
+    ACTUAL_CHECKSUM=$(shasum -a 256 "${TMP_DIR}/${ARCHIVE_NAME}" | awk '{print $1}')
+else
+    echo "Error: Neither sha256sum nor shasum found. Cannot verify checksum."
+    exit 1
+fi
+
+if [ "$EXPECTED_CHECKSUM" != "$ACTUAL_CHECKSUM" ]; then
+    echo "Error: Checksum verification failed!"
+    echo "Expected: ${EXPECTED_CHECKSUM}"
+    echo "Actual:   ${ACTUAL_CHECKSUM}"
+    echo "The downloaded file may be corrupted or tampered with."
+    exit 1
+fi
+echo "Checksum verified successfully."
+
+# Extract the archive
+echo "Extracting archive..."
+if ! tar -xzf "${TMP_DIR}/${ARCHIVE_NAME}" -C "${TMP_DIR}"; then
+    echo "Error: Failed to extract archive."
+    exit 1
+fi
+
+# Find and install the binary
+chmod +x "${TMP_DIR}/tasklog"
+mv "${TMP_DIR}/tasklog" "$TARGET_PATH"
 
 echo "Successfully installed tasklog to ${TARGET_PATH}"
 
