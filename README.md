@@ -29,11 +29,19 @@ An interactive CLI tool for tracking time on Jira tasks with seamless integratio
 
 ### Download Pre-built Binary
 
-To install the latest version of tasklog, run the following command:
+To install tasklog, first check the [releases page](https://github.com/Binsabbar/tasklog/releases) for the latest version, then run:
 
+```bash
+# Replace VERSION with the latest version from the releases page (e.g., 1.0.0-alpha.6)
+curl -fsSL https://raw.githubusercontent.com/Binsabbar/tasklog/main/install.sh | sudo bash -s VERSION
+```
+
+**Example** (installs version 1.0.0-alpha.6):
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Binsabbar/tasklog/main/install.sh | sudo bash -s 1.0.0-alpha.6
 ```
+
+> **Note:** The install script is fetched from the `main` branch. For reproducible installations, you can pin to a specific commit or tag by replacing `main` with a commit SHA or tag name.
 
 Available platforms: Linux and macOS (amd64 and arm64)
 
