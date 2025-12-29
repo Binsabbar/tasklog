@@ -33,7 +33,7 @@ To install tasklog, first check the [releases page](https://github.com/Binsabbar
 
 ```bash
 # Replace VERSION with the latest version from the releases page (e.g., 1.0.0-alpha.6)
-curl -fsSL https://raw.githubusercontent.com/Binsabbar/tasklog/main/install.sh | sudo bash -s VERSION
+curl -fsSL https://raw.githubusercontent.com/Binsabbar/tasklog/main/install.sh | sudo bash -s <VERSION>
 ```
 
 **Example** (installs version 1.0.0-alpha.6):
