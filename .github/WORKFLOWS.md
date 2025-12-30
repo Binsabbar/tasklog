@@ -19,63 +19,77 @@ See [Complete Release Process](#complete-release-process) for step-by-step guide
 ## Workflow Overview
 
 ### 1. Test Workflow (`test.yaml`) 🧪
+
 **Purpose:** Run comprehensive test suite for quality assurance
 
 **Triggers:**
+
 - ✅ Push to any branch (except `main`/`master`)
 - ✅ Pull requests to `main`, `master`, or `releases/**` branches
 - ✅ Manual trigger (`workflow_dispatch`)
 - ✅ Called by other workflows (`workflow_call`)
 
 **Path Filters:**
+
 - Runs only when Go code, workflows, or dependencies change
 - Paths: `.github/workflows/**`, `**/*.go`, `**/*.mod`, `**/*.sum`
 
 **Jobs:**
+
 1. **setup**: Install Go and download dependencies
 2. **vet**: Run `go vet` static analysis
 3. **test**: Run full test suite with `make go-test` (30-minute timeout)
 4. **govulncheck**: Scan for security vulnerabilities
 
 **Environment Variables:**
+
 - `TEST_SILENT=1`: Suppress verbose test output
 
 ---
 
 ### 2. Lint Workflow (`golangci-lint.yaml`) 🔍
+
 **Purpose:** Enforce code quality standards
 
 **Triggers:**
+
 - ✅ Push to any branch (except `main`/`master`)
 - ✅ Pull requests to `main`, `master`, or `releases/**` branches
 - ✅ Manual trigger (`workflow_dispatch`)
 - ✅ Called by other workflows (`workflow_call`)
 
 **Path Filters:**
+
 - Same as test workflow
 
 **Jobs:**
+
 1. **golangci**: Run `make go-lint` with golangci-lint configuration
 
 **Linters Enabled:**
+
 - errcheck, staticcheck, unused, ineffassign, govet, misspell
 - Configured via `.golangci.yml`
 
 ---
 
 ### 3. Snapshot Workflow (`snapshot.yaml`) 📸
+
 **Purpose:** Build development snapshots without releasing
 
 **Triggers:**
+
 - ✅ Push to development branches: `v[0-9]+.[0-9]+.[0-9]+-dev` (e.g., `v1.2.3-dev`)
 - ✅ Manual trigger (`workflow_dispatch`)
 
 **Jobs:**
+
 1. **test**: Runs full test suite (via `workflow_call`)
 2. **lint**: Runs linting (via `workflow_call`)
 3. **snapshot**: Builds binaries with `make release-snapshot`
 
 **Output:**
+
 - Multi-platform binaries (Linux, macOS, Windows)
 - ❌ No Docker images pushed
 - ❌ No GitHub releases created
@@ -84,9 +98,11 @@ See [Complete Release Process](#complete-release-process) for step-by-step guide
 ---
 
 ### 4. Release Workflow (`release.yaml`) 🚀
+
 **Purpose:** Create official releases with binaries and Docker images via controlled PR process
 
 **Triggers:**
+
 - ✅ **Pull Request merged** into release branches:
   - `releases/v[0-9]+.[0-9]+.[0-9]+` (e.g., `releases/v1.2.3`)
   - `releases/v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+` (e.g., `releases/v1.2.3-rc.1`)
@@ -97,6 +113,7 @@ See [Complete Release Process](#complete-release-process) for step-by-step guide
 **Important:** Direct pushes to `releases/*` branches should be **disabled via branch protection** to enforce PR-based releases.
 
 **Jobs:**
+
 1. **test**: Runs full test suite on merge commit (via `workflow_call`)
 2. **lint**: Runs linting on merge commit (via `workflow_call`)
 3. **release**: After tests pass, automatically:
@@ -110,14 +127,16 @@ See [Complete Release Process](#complete-release-process) for step-by-step guide
    - Attaches all artifacts (binaries, checksums)
 
 **Outputs:**
+
 - ✅ **Git tag created automatically** (no manual tag creation!)
 - ✅ GitHub Release with changelog and PR context
 - ✅ Multi-platform binaries (Linux, macOS, Windows - amd64/arm64)
-- ✅ Docker images: `ghcr.io/binsabbar/vault-sync:vX.Y.Z`
+- ✅ Docker images: `ghcr.io/binsabbar/tasklog:vX.Y.Z`
 - ✅ Docker `:latest` tag (for stable releases only, not pre-releases)
 - ✅ Checksums for verification
 
 **Key Features:**
+
 - 🔒 **PR-only releases**: Enforces code review before release
 - 🎯 **Single release method**: One clear path to production
 - 🔀 **Merge triggers release**: No manual tag creation needed
@@ -152,6 +171,7 @@ See [Complete Release Process](#complete-release-process) for step-by-step guide
 | PR to `main`/`master`         | ✅    | ✅    | ❌              | ❌              | ❌           | ❌          | Validation before merge        |
 
 **Notes:**
+
 - ¹ Tests run as PR checks (before merge is allowed)
 - ² Direct pushes to `main`/`master` don't trigger workflows (protected branches)
 - **Single release method**: Only PR merge to `releases/*` triggers releases
@@ -213,8 +233,8 @@ gh pr merge --merge --delete-branch
 #    4. Creates Git tag v1.2.3 (NO MANUAL TAG!)
 #    5. Creates GitHub Release with changelog
 #    6. Builds Docker images
-#    7. Pushes to ghcr.io/binsabbar/vault-sync:v1.2.3
-#    8. Pushes to ghcr.io/binsabbar/vault-sync:latest
+#    7. Pushes to ghcr.io/binsabbar/tasklog:v1.2.3
+#    8. Pushes to ghcr.io/binsabbar/tasklog:latest
 #
 # ⏱️  Total time after merge: ~8 minutes
 # 🎉 DONE! Full audit trail via PR + automated release!
@@ -256,7 +276,7 @@ gh pr merge --merge --delete-branch
 # ✅ Upon merge, GitHub Actions AUTOMATICALLY:
 #    - Creates tag v1.2.3-rc.1
 #    - Creates GitHub pre-release (marked as pre-release)
-#    - Pushes Docker: ghcr.io/binsabbar/vault-sync:v1.2.3-rc.1
+#    - Pushes Docker: ghcr.io/binsabbar/tasklog:v1.2.3-rc.1
 #    - Does NOT update :latest tag (only stable releases do)
 ```
 
@@ -310,6 +330,7 @@ To enforce the PR-based release workflow and prevent accidental direct pushes, s
 ### Result
 
 With branch protection enabled:
+
 - ✅ All `releases/*` changes must go through PRs
 - ✅ Tests and lint must pass before merge
 - ✅ Full audit trail (who approved, when merged)
@@ -340,6 +361,7 @@ git push origin releases/v1.2.3
 ```
 
 **Benefits:**
+
 - ✅ No manual tag creation needed
 - ✅ No manual GitHub Release creation needed
 - ✅ No manual Docker builds needed
@@ -379,16 +401,16 @@ gh workflow run release.yaml -f branch=releases/v1.2.3
 
 | Tag Pattern         | Docker Images                                    |
 | ------------------- | ------------------------------------------------ |
-| `v1.2.3`            | `ghcr.io/binsabbar/vault-sync:v1.2.3`, `:latest` |
-| `v1.2.3-rc.1`       | `ghcr.io/binsabbar/vault-sync:v1.2.3-rc.1`       |
-| `v1.2.3-beta.1`     | `ghcr.io/binsabbar/vault-sync:v1.2.3-beta.1`     |
-| `v1.2.3-alpha.1`    | `ghcr.io/binsabbar/vault-sync:v1.2.3-alpha.1`    |
+| `v1.2.3`            | `ghcr.io/binsabbar/tasklog:v1.2.3`, `:latest` |
+| `v1.2.3-rc.1`       | `ghcr.io/binsabbar/tasklog:v1.2.3-rc.1`       |
+| `v1.2.3-beta.1`     | `ghcr.io/binsabbar/tasklog:v1.2.3-beta.1`     |
+| `v1.2.3-alpha.1`    | `ghcr.io/binsabbar/tasklog:v1.2.3-alpha.1`    |
 | `v1.2.3-dev` branch | ❌ No Docker images (snapshot build only)         |
 
 ### Artifact Locations
 
-- **GitHub Releases**: https://github.com/Binsabbar/vault-sync/releases
-- **Docker Images**: https://github.com/Binsabbar/vault-sync/pkgs/container/vault-sync
+- **GitHub Releases**: <https://github.com/Binsabbar/tasklog/releases>
+- **Docker Images**: <https://github.com/Binsabbar/tasklog/pkgs/container/tasklog>
 - **Snapshot Artifacts**: Available in GitHub Actions workflow run artifacts
 
 ---
@@ -411,6 +433,7 @@ gh workflow run release.yaml -f branch=releases/v1.2.3
 ## Troubleshooting
 
 ### Tests Failed on Release Branch
+
 ```bash
 # Fix the issue
 git commit -am "fix: resolve test failures"
@@ -420,6 +443,7 @@ git push origin releases/v1.2.3
 ```
 
 ### Need to Re-release
+
 ```bash
 # Delete the GitHub Release first
 gh release delete v1.2.3 -y
@@ -433,6 +457,7 @@ git push origin releases/v1.2.3 --force
 ```
 
 ### Want Different Version
+
 ```bash
 # Just create a new branch with correct version
 git checkout -b releases/v1.2.4
@@ -441,6 +466,7 @@ git push origin releases/v1.2.4
 ```
 
 ### Release Failed
+
 ```bash
 # View workflow logs
 gh run list --workflow=release.yaml
