@@ -218,6 +218,10 @@ jobs:
 
           echo "✅ Tag ${VERSION} created successfully"
 
+          # Checkout the tag so goreleaser runs against the correct commit
+          echo "🔄 Checking out ${VERSION}..."
+          git checkout "${VERSION}"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
