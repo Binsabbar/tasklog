@@ -260,7 +260,7 @@ jobs:
           fi
 
           echo "🔗 https://github.com/${{ github.repository }}/releases/tag/${VERSION}"
-          echo "🐳 Docker: ghcr.io/${{ github.repository_owner }}/vault-sync:${VERSION}"
+          echo "🐳 Docker: ghcr.io/${{ github.repository_owner }}/tasklog:${VERSION}"
 
           # Show next steps
           case "$RELEASE_TYPE" in
@@ -292,6 +292,6 @@ jobs:
               echo "🎉 Stable release complete!"
               echo ""
               echo "Tagged as: ${VERSION}"
-              echo "Docker latest: ghcr.io/${{ github.repository_owner }}/vault-sync:latest"
+              echo "Docker latest: ghcr.io/${{ github.repository_owner }}/tasklog:latest"
               ;;
           esac
