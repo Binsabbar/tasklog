@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"tasklog/internal/config"
@@ -45,25 +46,25 @@ func runBreak(cmd *cobra.Command, args []string) {
 	// If no break name provided, list available breaks
 	if len(args) == 0 {
 		if len(cfg.Slack.Breaks) == 0 {
-			fmt.Println("❌ No breaks configured. Add breaks to your config.yaml file.")
-			fmt.Println("\nExample configuration:")
-			fmt.Println("breaks:")
-			fmt.Println("  - name: \"lunch\"")
-			fmt.Println("    duration: 60")
-			fmt.Println("    emoji: \":fork_and_knife:\"")
+			Out.Error(fmt.Errorf("no breaks configured. Add breaks to your config.yaml file"))
+			Out.Println("\nExample configuration:")
+			Out.Println("breaks:")
+			Out.Println("  - name: \"lunch\"")
+			Out.Println("    duration: 60")
+			Out.Println("    emoji: \":fork_and_knife:\"")
 			return
 		}
 
-		fmt.Println("📋 Available breaks:")
-		fmt.Println("")
+		Out.Println("📋 Available breaks:")
+		Out.Println("")
 		for _, b := range cfg.Slack.Breaks {
 			emoji := b.Emoji
 			if emoji == "" {
 				emoji = "⏸️"
 			}
-			fmt.Printf("  %s %-12s - %d minutes\n", emoji, b.Name, b.Duration)
+			Out.Printf("  %s %-12s - %d minutes\n", emoji, b.Name, b.Duration)
 		}
-		fmt.Println("\nUsage: tasklog break [break-name]")
+		Out.Println("\nUsage: tasklog break [break-name]")
 		return
 	}
 
@@ -72,15 +73,14 @@ func runBreak(cmd *cobra.Command, args []string) {
 	// Get break configuration
 	breakEntry, found := cfg.GetBreak(breakName)
 	if !found {
-		log.Fatal().
-			Str("break_name", breakName).
-			Msg("Break not found in configuration. Please add it to your config.yaml")
+		Out.Error(fmt.Errorf("break '%s' not found in configuration. Please add it to your config.yaml", breakName))
+		os.Exit(1)
 	}
 
 	// Check if Slack is configured
 	if cfg.Slack.UserToken == "" || cfg.Slack.ChannelID == "" {
-		log.Warn().Msg("Slack not configured. Break registered but Slack status not updated.")
-		fmt.Printf("⏸️  Taking a %s break for %d minutes\n", breakName, breakEntry.Duration)
+		Out.Warn("Slack not configured. Break registered but Slack status not updated.")
+		Out.Printf("⏸️  Taking a %s break for %d minutes\n", breakName, breakEntry.Duration)
 		return
 	}
 
@@ -106,32 +106,24 @@ func runBreak(cmd *cobra.Command, args []string) {
 
 	err = slackClient.SetStatus(statusText, statusEmoji, statusExpirationMinutes)
 	if err != nil {
-		log.Error().Err(err).Str("emoji", statusEmoji).Msg("Failed to update Slack status")
+		Out.Error(fmt.Errorf("failed to update Slack status (emoji: %s): %w", statusEmoji, err))
 
 		// If the error is about invalid emoji and we're not already using the default, retry with default
 		if statusEmoji != defaultBreakEmoji &&
 			(err.Error() == "slack API error: profile_status_set_failed_not_valid_emoji" ||
 				err.Error() == "slack API error: profile_status_set_failed_not_emoji_syntax" ||
 				err.Error() == "slack API error: invalid_emoji") {
-			log.Warn().Msg("Invalid emoji detected, retrying with default emoji")
+			Out.Warn("Invalid emoji detected, retrying with default emoji")
 			err = slackClient.SetStatus(statusText, defaultBreakEmoji, statusExpirationMinutes)
 			if err != nil {
-				log.Error().Err(err).Msg("Failed to update Slack status with default emoji")
+				Out.Error(fmt.Errorf("failed to update Slack status with default emoji: %w", err))
 			} else {
-				log.Info().
-					Str("status", statusText).
-					Str("emoji", defaultBreakEmoji).
-					Int("expiration_minutes", statusExpirationMinutes).
-					Msg("Slack status updated with default emoji")
+				Out.Info(fmt.Sprintf("Slack status updated with default emoji: %s", statusText))
 				statusUpdated = true
 			}
 		}
 	} else {
-		log.Info().
-			Str("status", statusText).
-			Str("emoji", statusEmoji).
-			Int("expiration_minutes", statusExpirationMinutes).
-			Msg("Slack status updated")
+		Out.Info(fmt.Sprintf("Slack status updated: %s", statusText))
 		statusUpdated = true
 	}
 
@@ -148,26 +140,23 @@ func runBreak(cmd *cobra.Command, args []string) {
 
 	err = slackClient.PostMessage(message)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to post message to Slack")
+		Out.Error(fmt.Errorf("failed to post message to Slack: %w", err))
 	} else {
-		log.Info().
-			Str("channel", cfg.Slack.ChannelID).
-			Str("message", message).
-			Msg("Message posted to Slack")
+		Out.Info("Message posted to Slack")
 		messagePosted = true
 	}
 
 	// Display success message with accurate status
-	fmt.Printf("✅ Break registered: %s (%d minutes)\n", breakName, breakEntry.Duration)
-	fmt.Printf("📅 Return time: %s\n", returnTime.Format("3:04 PM"))
+	Out.Success(fmt.Sprintf("Break registered: %s (%d minutes)", breakName, breakEntry.Duration))
+	Out.Printf("📅 Return time: %s\n", returnTime.Format("3:04 PM"))
 
 	if statusUpdated && messagePosted {
-		fmt.Printf("💬 Slack updated: Status set and message posted\n")
+		Out.Printf("💬 Slack updated: Status set and message posted\n")
 	} else if messagePosted {
-		fmt.Printf("💬 Slack updated: Message posted (status not updated)\n")
+		Out.Printf("💬 Slack updated: Message posted (status not updated)\n")
 	} else if statusUpdated {
-		fmt.Printf("💬 Slack updated: Status set (message failed)\n")
+		Out.Printf("💬 Slack updated: Status set (message failed)\n")
 	} else {
-		fmt.Printf("⚠️  Slack update failed\n")
+		Out.Warn("Slack update failed")
 	}
 }

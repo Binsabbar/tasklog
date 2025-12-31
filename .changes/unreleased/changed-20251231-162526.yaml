@@ -1,0 +1,3 @@
+kind: changed
+body: Migrated interactive UI to Charmbracelet's Bubble Tea (via huh) and standardized all output styling.
+time: 2025-12-31T16:25:26.718997+03:00

@@ -42,12 +42,12 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	// Check if config already exists
 	if _, err := os.Stat(configPath); err == nil {
-		fmt.Printf("Config file already exists at: %s\n", configPath)
-		fmt.Println("\nHelpful commands:")
-		fmt.Println("  tasklog config example  - View the complete example config with all options")
-		fmt.Println("  tasklog config show     - Display your current configuration")
-		fmt.Println("  tasklog config compare  - Compare your config with the example to find missing fields")
-		fmt.Println("\nTo reinitialize, delete the existing file and run this command again.")
+		Out.Printf("Config file already exists at: %s\n", configPath)
+		Out.Println("\nHelpful commands:")
+		Out.Println("  tasklog config example  - View the complete example config with all options")
+		Out.Println("  tasklog config show     - Display your current configuration")
+		Out.Println("  tasklog config compare  - Compare your config with the example to find missing fields")
+		Out.Println("\nTo reinitialize, delete the existing file and run this command again.")
 		return nil
 	}
 
@@ -73,19 +73,19 @@ func createNewConfig(configPath string) error {
 
 // printSuccessMessage displays the success message after config creation
 func printSuccessMessage(configPath string) {
-	fmt.Println("✓ Configuration initialized successfully!")
-	fmt.Printf("\nConfig file created at: %s\n", configPath)
-	fmt.Println("\nNext steps:")
-	fmt.Println("1. Edit the config file with your Jira and Tempo credentials")
-	fmt.Println("2. Set the Jira project_key for your project (required)")
-	fmt.Println("3. Get your Jira API token: https://id.atlassian.com/manage-profile/security/api-tokens")
-	fmt.Println("4. Get your Tempo API token from Tempo > Settings > API Integration")
-	fmt.Println("5. (Optional) Configure labels and shortcuts")
-	fmt.Printf("6. Run: tasklog log\n")
+	Out.Success("Configuration initialized successfully!")
+	Out.Printf("\nConfig file created at: %s\n", configPath)
+	Out.Println("\nNext steps:")
+	Out.Println("1. Edit the config file with your Jira and Tempo credentials")
+	Out.Println("2. Set the Jira project_key for your project (required)")
+	Out.Println("3. Get your Jira API token: https://id.atlassian.com/manage-profile/security/api-tokens")
+	Out.Println("4. Get your Tempo API token from Tempo > Settings > API Integration")
+	Out.Println("5. (Optional) Configure labels and shortcuts")
+	Out.Printf("6. Run: tasklog log\n")
 }
 
 // printError prints an error message and returns nil (for cobra command compatibility)
 func printError(message string, err error) error {
-	fmt.Printf("%s: %v\n", message, err)
+	Out.Error(fmt.Errorf("%s: %w", message, err))
 	return nil
 }

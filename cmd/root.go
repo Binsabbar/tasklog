@@ -6,12 +6,15 @@ import (
 	"strings"
 
 	"tasklog/internal/config"
+	"tasklog/internal/output"
 	"tasklog/internal/prerelease"
 	"tasklog/internal/updater"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
+
+var Out output.Writer = output.NewConsole()
 
 const (
 	githubOwner = "Binsabbar"
@@ -30,6 +33,10 @@ var rootCmd = &cobra.Command{
 	Long: `Tasklog is an interactive CLI tool for tracking time on Jira tasks.
 It integrates with Jira Cloud API and Tempo to help you log time efficiently.` + configHelp,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// Initialize output writer
+		// We can check a verbose flag here if we had one global flag
+		Out = output.NewConsole()
+
 		// Check for pre-release config issues first (only for pre-release builds)
 		if IsPreReleaseBuild() {
 			checkPreReleaseConfigIssues()

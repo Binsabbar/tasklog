@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 
 	"tasklog/internal/jira"
@@ -45,35 +44,34 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(entries) == 0 {
-		fmt.Println("✓ All entries are synced")
+		Out.Success("All entries are synced")
 		return nil
 	}
 
-	fmt.Printf("Found %d unsynced entries\n\n", len(entries))
+	Out.Printf("Found %d unsynced entries\n\n", len(entries))
 
 	successCount := 0
 	failureCount := 0
 
 	for i, entry := range entries {
-		fmt.Printf("[%d/%d] Syncing %s - %s\n", i+1, len(entries), entry.IssueKey, entry.TimeSpent)
+		Out.Printf("[%d/%d] Syncing %s - %s\n", i+1, len(entries), entry.IssueKey, entry.TimeSpent)
 
 		// Sync to Jira if not synced
 		if !entry.SyncedToJira {
-			log.Debug().Int64("id", entry.ID).Msg("Syncing to Jira")
+			Out.Debug(fmt.Sprintf("Syncing entry ID %d to Jira", entry.ID))
 			worklog, err := jiraClient.AddWorklog(entry.IssueKey, entry.TimeSpentSeconds, entry.Started, entry.Comment)
 			if err != nil {
-				log.Error().Err(err).Int64("id", entry.ID).Msg("Failed to sync to Jira")
-				fmt.Printf("  ✗ Failed to sync to Jira: %v\n", err)
+				Out.Error(fmt.Errorf("failed to sync entry ID %d to Jira: %w", entry.ID, err))
 				failureCount++
 			} else {
 				entry.SyncedToJira = true
 				entry.JiraWorklogID = &worklog.ID
-				fmt.Println("  ✓ Synced to Jira")
+				Out.Success("Synced to Jira")
 
 				// If Tempo is enabled, Jira automatically creates a Tempo worklog
 				if cfg.Tempo.Enabled {
 					entry.SyncedToTempo = true
-					fmt.Println("  ✓ Tempo worklog created automatically by Jira")
+					Out.Success("Tempo worklog created automatically by Jira")
 				}
 			}
 		}
@@ -85,7 +83,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 		// Update storage
 		if err := store.UpdateTimeEntry(&entry); err != nil {
-			log.Error().Err(err).Int64("id", entry.ID).Msg("Failed to update entry")
+			Out.Error(fmt.Errorf("failed to update entry ID %d: %w", entry.ID, err))
 		}
 
 		if entry.SyncedToJira && entry.SyncedToTempo {
@@ -93,8 +91,8 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	fmt.Printf("\n")
-	fmt.Printf("Sync complete: %d successful, %d failed\n", successCount, failureCount)
+	Out.Printf("\n")
+	Out.Printf("Sync complete: %d successful, %d failed\n", successCount, failureCount)
 
 	return nil
 }

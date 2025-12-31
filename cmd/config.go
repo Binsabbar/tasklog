@@ -62,10 +62,10 @@ func runConfigExample(cmd *cobra.Command, args []string) error {
 	}
 
 	// Print the example config
-	fmt.Println("# Example tasklog configuration with all available options:")
-	fmt.Println("# Copy relevant sections to your config file at ~/.tasklog/config.yaml")
-	fmt.Println()
-	fmt.Print(string(exampleData))
+	Out.Println("# Example tasklog configuration with all available options:")
+	Out.Println("# Copy relevant sections to your config file at ~/.tasklog/config.yaml")
+	Out.Println()
+	Out.Print(string(exampleData))
 
 	return nil
 }
@@ -89,8 +89,8 @@ func runConfigShow(cmd *cobra.Command, args []string) error {
 	}
 
 	// Print config path and content
-	fmt.Printf("# Configuration file: %s\n\n", configPath)
-	fmt.Print(string(data))
+	Out.Printf("# Configuration file: %s\n\n", configPath)
+	Out.Print(string(data))
 
 	return nil
 }
@@ -119,8 +119,8 @@ func runConfigCompare(cmd *cobra.Command, args []string) error {
 	}
 
 	// Print comparison results
-	fmt.Printf("Comparing: %s\n\n", configPath)
-	fmt.Print(config.FormatComparisonResult(result))
+	Out.Printf("Comparing: %s\n\n", configPath)
+	Out.Print(config.FormatComparisonResult(result))
 
 	return nil
 }

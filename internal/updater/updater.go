@@ -257,30 +257,10 @@ func (u *Updater) GetUpdateInfo(currentVersion, channel string) (*UpdateInfo, er
 	}, nil
 }
 
-// PerformUpgrade downloads and installs the new version
+// InstallUpdate downloads and replaces the binary with the new version
 // Returns backup path and error
-func (u *Updater) PerformUpgrade(updateInfo *UpdateInfo, confirm func(string) bool) (string, error) {
-	// Display update information
-	fmt.Printf("\n📦 New version available!\n")
-	fmt.Printf("   Current version: %s\n", updateInfo.CurrentVersion)
-	fmt.Printf("   Latest version:  %s\n", updateInfo.LatestVersion)
-	if updateInfo.IsPreRelease {
-		fmt.Printf("   Type:           Pre-release\n")
-	}
-	fmt.Printf("   Release URL:     %s\n\n", updateInfo.ReleaseURL)
-
-	if updateInfo.ReleaseNotes != "" {
-		fmt.Printf("Release notes:\n%s\n\n", updateInfo.ReleaseNotes)
-	}
-
-	// Confirm upgrade
-	if !confirm("Do you want to upgrade now?") {
-		return "", fmt.Errorf("upgrade cancelled by user")
-	}
-
-	// Download and replace binary
-	fmt.Println("\n📥 Downloading new version...")
-
+func (u *Updater) InstallUpdate(updateInfo *UpdateInfo) (string, error) {
+	log.Info().Msg("Downloading new version...")
 	backupPath, err := u.downloadAndReplace(updateInfo.DownloadURL, "")
 	if err != nil {
 		return backupPath, err

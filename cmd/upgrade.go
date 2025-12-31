@@ -1,15 +1,13 @@
 package cmd
 
 import (
-	"bufio"
 	"fmt"
 	"os"
-	"strings"
 
 	"tasklog/internal/config"
+	"tasklog/internal/ui"
 	"tasklog/internal/updater"
 
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -59,14 +57,14 @@ is released.`,
 		// Get config dir for cache
 		configDir, err := config.GetConfigDir()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: failed to get config directory: %v\n", err)
+			Out.Error(fmt.Errorf("failed to get config directory: %w", err))
 			os.Exit(1)
 		}
 
 		// Load config for check interval
 		cfg, err := config.Load()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: failed to load config: %v\n", err)
+			Out.Error(fmt.Errorf("failed to load config: %w", err))
 			os.Exit(1)
 		}
 
@@ -75,12 +73,12 @@ is released.`,
 
 		// Dismiss update
 		if err := upd.DismissUpdate(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			Out.Error(err)
 			os.Exit(1)
 		}
 
-		fmt.Println("✓ Update notification dismissed")
-		fmt.Printf("You'll be reminded again in %s, or immediately if a newer version is released.\n", cfg.Update.CheckInterval)
+		Out.Success("Update notification dismissed")
+		Out.Printf("You'll be reminded again in %s, or immediately if a newer version is released.\n", cfg.Update.CheckInterval)
 	},
 }
 
@@ -96,7 +94,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("upgrade command is only available for official releases built by goreleaser\nBuild info: version=%s, builtBy=%s", version, builtBy)
 	}
 
-	fmt.Println("🔍 Checking for updates...")
+	Out.Println("🔍 Checking for updates...")
 
 	// Load config
 	cfg, err := config.Load()
@@ -121,50 +119,64 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	}
 
 	if updateInfo == nil {
-		fmt.Printf("✓ You are already running the latest version (%s)\n", version)
+		Out.Success(fmt.Sprintf("You are already running the latest version (%s)", version))
 		return nil
 	}
 
-	// Perform upgrade (handles user interaction and all upgrade logic)
-	backupPath, err := upd.PerformUpgrade(updateInfo, confirmAction)
+	// Display update information
+	Out.Println("\n📦 New version available!")
+	Out.Printf("   Current version: %s\n", updateInfo.CurrentVersion)
+	Out.Printf("   Latest version:  %s\n", updateInfo.LatestVersion)
+	if updateInfo.IsPreRelease {
+		Out.Printf("   Type:           Pre-release\n")
+	}
+	Out.Printf("   Release URL:     %s\n\n", updateInfo.ReleaseURL)
+
+	if updateInfo.ReleaseNotes != "" {
+		Out.Printf("Release notes:\n%s\n\n", updateInfo.ReleaseNotes)
+	}
+
+	// Confirm upgrade
+	confirm, err := ui.Confirm("Do you want to upgrade now?")
+	if err != nil {
+		return err
+	}
+	if !confirm {
+		return fmt.Errorf("upgrade cancelled by user")
+	}
+
+	// Download and replace binary
+	Out.Println("\n📥 Installing new version...")
+
+	// Perform upgrade
+	backupPath, err := upd.InstallUpdate(updateInfo)
 	if err != nil {
 		if backupPath != "" {
-			fmt.Printf("\n❌ Upgrade failed: %v\n", err)
-			fmt.Printf("\nAttempting rollback...\n")
+			Out.Error(fmt.Errorf("upgrade failed: %w", err))
+			Out.Warn("Attempting rollback...")
 
 			// Restore from backup
 			if restoreErr := upd.RollbackUpgrade(backupPath); restoreErr != nil {
-				fmt.Printf("❌ Rollback failed: %v\n", restoreErr)
-				fmt.Printf("Your backup is saved at: %s\n", backupPath)
+				Out.Error(fmt.Errorf("rollback failed: %w", restoreErr))
+				Out.Printf("Your backup is saved at: %s\n", backupPath)
 				binaryPath, _ := os.Executable()
-				fmt.Printf("Please restore it manually: mv %s %s\n", backupPath, binaryPath)
+				Out.Printf("Please restore it manually: mv %s %s\n", backupPath, binaryPath)
 				return fmt.Errorf("upgrade and rollback both failed")
 			}
 
-			fmt.Println("✓ Rollback successful. Your original version has been restored.")
+			Out.Success("Rollback successful. Your original version has been restored.")
 		}
 		return err
 	}
 
-	fmt.Printf("\n✓ Successfully upgraded to version %s!\n", updateInfo.LatestVersion)
-	fmt.Printf("Backup saved at: %s\n", backupPath)
-	fmt.Println("\nYou can now run 'tasklog version' to verify the new version.")
+	Out.Success(fmt.Sprintf("Successfully upgraded to version %s!", updateInfo.LatestVersion))
+	Out.Printf("Backup saved at: %s\n", backupPath)
+	Out.Println("\nYou can now run 'tasklog version' to verify the new version.")
 
 	// Clear update cache after successful upgrade
 	if clearErr := upd.ClearUpdateCache(); clearErr != nil {
-		log.Debug().Err(clearErr).Msg("Failed to clear update cache")
+		Out.Debug(fmt.Sprintf("Failed to clear update cache: %v", clearErr))
 	}
 
 	return nil
-}
-
-func confirmAction(prompt string) bool {
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Printf("%s (y/N): ", prompt)
-	response, err := reader.ReadString('\n')
-	if err != nil {
-		return false
-	}
-	response = strings.ToLower(strings.TrimSpace(response))
-	return response == "y" || response == "yes"
 }

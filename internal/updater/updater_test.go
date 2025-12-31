@@ -431,37 +431,6 @@ func TestRollbackUpgrade(t *testing.T) {
 	_ = err
 }
 
-func TestPerformUpgrade_UserCancellation(t *testing.T) {
-	tmpDir := t.TempDir()
-	updater := NewUpdater("owner", "repo", tmpDir, "24h")
-
-	updateInfo := &UpdateInfo{
-		CurrentVersion: "1.0.0",
-		LatestVersion:  "1.1.0",
-		ReleaseURL:     "https://github.com/owner/repo/releases/tag/v1.1.0",
-		ReleaseNotes:   "New features",
-		DownloadURL:    "https://example.com/download",
-		AssetName:      "tasklog-linux-amd64",
-		IsPreRelease:   false,
-	}
-
-	// Mock confirm function that returns false
-	confirmNo := func(prompt string) bool {
-		return false
-	}
-
-	backupPath, err := updater.PerformUpgrade(updateInfo, confirmNo)
-	if err == nil {
-		t.Error("expected error when user cancels")
-	}
-	if !strings.Contains(err.Error(), "cancelled") {
-		t.Errorf("expected 'cancelled' in error, got: %v", err)
-	}
-	if backupPath != "" {
-		t.Errorf("expected empty backup path, got '%s'", backupPath)
-	}
-}
-
 func TestGetUpdateInfo_AssetSelection(t *testing.T) {
 	// Create a test server that returns assets with and without archives
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
