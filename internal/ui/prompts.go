@@ -213,16 +213,16 @@ func Confirm(message string) (bool, error) {
 	return confirmed, nil
 }
 
-// PromptStartTime prompts user for when they worked (optional)
-// Returns time.Now() if user wants current time, otherwise parsed datetime
-func PromptStartTime() (time.Time, error) {
+// PromptStartTime prompts user for when they worked (optional).
+// Returns time.Now() minus the time spent if user wants current time.
+func PromptStartTime(timeSpentSeconds int) (time.Time, error) {
 	useNow, err := Confirm("Log for current time?")
 	if err != nil {
 		return time.Time{}, err
 	}
 
 	if useNow {
-		return time.Now(), nil
+		return time.Now().Add(-time.Duration(timeSpentSeconds) * time.Second), nil
 	}
 
 	var whenStr string

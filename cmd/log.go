@@ -218,13 +218,13 @@ func runLog(cmd *cobra.Command, args []string) error {
 	} else if shortcutName == "" && taskKey == "" {
 		// Interactive mode AND not using shortcuts: prompt for start time
 		var err error
-		started, err = ui.PromptStartTime()
+		started, err = ui.PromptStartTime(timeSeconds)
 		if err != nil {
 			return fmt.Errorf("failed to get start time: %w", err)
 		}
 	} else {
-		// Shortcut or CLI mode without --at: use current time
-		started = time.Now()
+		// Shortcut or CLI mode without --at: default to ending now
+		started = time.Now().Add(-time.Duration(timeSeconds) * time.Second)
 	}
 
 	// Confirm before logging

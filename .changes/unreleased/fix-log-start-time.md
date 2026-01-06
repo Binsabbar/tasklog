@@ -1,0 +1,3 @@
+kind: fixed
+body: "Default log start times now backfill from the current time based on the logged duration."
+time: 2026-01-06T09:50:52Z
