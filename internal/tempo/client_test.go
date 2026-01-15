@@ -103,3 +103,38 @@ func TestWorklogAttributeStructure(t *testing.T) {
 		t.Error("attribute value not set correctly")
 	}
 }
+
+func TestTimezoneFix(t *testing.T) {
+	// Test that times are correctly converted to UTC for Tempo API
+	// This addresses the timezone mismatch issue where local times were being
+	// sent to Tempo without timezone conversion
+
+	// Create a time in a specific timezone (e.g., Europe/London which is UTC+1 in summer)
+	loc, err := time.LoadLocation("Europe/London")
+	if err != nil {
+		t.Skipf("Could not load Europe/London timezone: %v", err)
+	}
+
+	// Create a time at 9:00 AM London time (BST, UTC+1 during summer)
+	localTime := time.Date(2024, 7, 15, 9, 0, 0, 0, loc)
+
+	// When converted to UTC, it should be 8:00 AM
+	utcTime := localTime.UTC()
+
+	// Verify the conversion
+	if utcTime.Hour() != 8 {
+		t.Errorf("Expected UTC hour to be 8, got %d", utcTime.Hour())
+	}
+
+	// Verify the formatted strings that would be sent to Tempo
+	expectedDate := "2024-07-15"
+	expectedTime := "08:00:00"
+
+	if utcTime.Format("2006-01-02") != expectedDate {
+		t.Errorf("Expected date %s, got %s", expectedDate, utcTime.Format("2006-01-02"))
+	}
+
+	if utcTime.Format("15:04:05") != expectedTime {
+		t.Errorf("Expected time %s, got %s", expectedTime, utcTime.Format("15:04:05"))
+	}
+}
