@@ -71,8 +71,10 @@ func (c *Client) AddWorklog(issueID, authorAccountID string, timeSpentSeconds in
 	endpoint := "https://api.tempo.io/4/worklogs"
 
 	// Format date and time for Tempo
-	startDate := started.Format("2006-01-02")
-	startTime := started.Format("15:04:05")
+	// Tempo API v4 expects startTime in UTC when creating worklogs
+	startedUTC := started.UTC()
+	startDate := startedUTC.Format("2006-01-02")
+	startTime := startedUTC.Format("15:04:05")
 
 	payload := WorklogRequest{
 		IssueID:          issueID,
