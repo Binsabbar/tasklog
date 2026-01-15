@@ -63,6 +63,7 @@ type IssueUser struct {
 	AccountID    string `json:"accountId"`
 	DisplayName  string `json:"displayName"`
 	EmailAddress string `json:"emailAddress"`
+	TimeZone     string `json:"timeZone"`
 }
 
 // SearchResult represents Jira search results

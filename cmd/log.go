@@ -356,8 +356,11 @@ func showTodaySummary(store *storage.Storage, jiraClient *jira.Client, tempoClie
 	fmt.Printf("\n✓ Tempo Worklogs (%d entries): %s\n", len(tempoWorklogs), timeparse.Format(tempoTotal))
 	if len(tempoWorklogs) > 0 {
 		for _, wl := range tempoWorklogs {
+			// Format time using user's timezone if available
+			timeStr := formatTempoTime(wl.StartDate, wl.StartTime, currentUser.TimeZone)
+
 			fmt.Printf("  %s - %-10s [%-12s] %s\n",
-				wl.StartTime,
+				timeStr,
 				timeparse.Format(wl.TimeSpentSeconds),
 				wl.Description,
 				wl.IssueKey,
@@ -414,4 +417,36 @@ func showTodaySummary(store *storage.Storage, jiraClient *jira.Client, tempoClie
 	fmt.Println("═══════════════════════════════════════════")
 
 	return nil
+}
+
+// formatTempoTime parses the time in the user's timezone and returns it in local time
+func formatTempoTime(startDate, startTime, userTimeZone string) string {
+	// If no timezone is provided, return original time
+	if userTimeZone == "" {
+		return startTime
+	}
+
+	// Load user's timezone location
+	loc, err := time.LoadLocation(userTimeZone)
+	if err != nil {
+		log.Warn().Err(err).Str("timezone", userTimeZone).Msg("Failed to load timezone location")
+		return startTime
+	}
+
+	// Parse the time in the user's timezone
+	// Tempo uses YYYY-MM-DD for startDate and HH:MM:SS for startTime
+	layout := "2006-01-02 15:04:05"
+	timeStr := fmt.Sprintf("%s %s", startDate, startTime)
+
+	t, err := time.ParseInLocation(layout, timeStr, loc)
+	if err != nil {
+		log.Warn().Err(err).Str("time", timeStr).Msg("Failed to parse time in user timezone")
+		return startTime
+	}
+
+	// Convert to local time
+	localTime := t.In(time.Local)
+
+	// Return formatted local time
+	return localTime.Format("15:04:05")
 }
