@@ -357,7 +357,7 @@ func showTodaySummary(store *storage.Storage, jiraClient *jira.Client, tempoClie
 	if len(tempoWorklogs) > 0 {
 		for _, wl := range tempoWorklogs {
 			fmt.Printf("  %s - %-10s [%-12s] %s\n",
-				wl.StartTime,
+				wl.GetLocalStartTime(), // Convert UTC to local time for display
 				timeparse.Format(wl.TimeSpentSeconds),
 				wl.Description,
 				wl.IssueKey,
