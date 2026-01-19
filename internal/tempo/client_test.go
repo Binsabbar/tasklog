@@ -104,37 +104,91 @@ func TestWorklogAttributeStructure(t *testing.T) {
 	}
 }
 
-func TestTimezoneFix(t *testing.T) {
-	// Test that times are correctly converted to UTC for Tempo API
-	// This addresses the timezone mismatch issue where local times were being
-	// sent to Tempo without timezone conversion
-
-	// Create a time in a specific timezone (e.g., Europe/London which is UTC+1 in summer)
-	loc, err := time.LoadLocation("Europe/London")
-	if err != nil {
-		t.Skipf("Could not load Europe/London timezone: %v", err)
+func TestGetLocalStartTime(t *testing.T) {
+	tests := []struct {
+		name           string
+		startDate      string
+		startTime      string
+		expectedHour   int
+		expectedMin    int
+		timezoneName   string
+		timezoneOffset int // hours offset from UTC
+	}{
+		{
+			name:           "UTC time stays the same",
+			startDate:      "2024-01-15",
+			startTime:      "09:00:00",
+			expectedHour:   9,
+			expectedMin:    0,
+			timezoneName:   "UTC",
+			timezoneOffset: 0,
+		},
+		{
+			name:           "UTC+3 (KSA) converts correctly",
+			startDate:      "2024-01-15",
+			startTime:      "09:00:00",
+			expectedHour:   12,
+			expectedMin:    0,
+			timezoneName:   "Asia/Riyadh",
+			timezoneOffset: 3,
+		},
+		{
+			name:           "UTC-5 (EST) converts correctly",
+			startDate:      "2024-01-15",
+			startTime:      "14:00:00",
+			expectedHour:   9,
+			expectedMin:    0,
+			timezoneName:   "America/New_York",
+			timezoneOffset: -5,
+		},
+		{
+			name:           "UTC+1 (CET) converts correctly",
+			startDate:      "2024-01-15",
+			startTime:      "08:00:00",
+			expectedHour:   9,
+			expectedMin:    0,
+			timezoneName:   "Europe/Paris",
+			timezoneOffset: 1,
+		},
 	}
 
-	// Create a time at 9:00 AM London time (BST, UTC+1 during summer)
-	localTime := time.Date(2024, 7, 15, 9, 0, 0, 0, loc)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set the local timezone for this test
+			loc, err := time.LoadLocation(tt.timezoneName)
+			if err != nil {
+				t.Skipf("Could not load %s timezone: %v", tt.timezoneName, err)
+			}
 
-	// When converted to UTC, it should be 8:00 AM
-	utcTime := localTime.UTC()
+			// Temporarily set local timezone for the test
+			originalLocal := time.Local
+			time.Local = loc
+			defer func() { time.Local = originalLocal }()
 
-	// Verify the conversion
-	if utcTime.Hour() != 8 {
-		t.Errorf("Expected UTC hour to be 8, got %d", utcTime.Hour())
-	}
+			// Create a WorklogResponse with UTC time
+			wl := WorklogResponse{
+				StartDate: tt.startDate,
+				StartTime: tt.startTime,
+			}
 
-	// Verify the formatted strings that would be sent to Tempo
-	expectedDate := "2024-07-15"
-	expectedTime := "08:00:00"
+			// Get the local time string
+			localTimeStr := wl.GetLocalStartTime()
 
-	if utcTime.Format("2006-01-02") != expectedDate {
-		t.Errorf("Expected date %s, got %s", expectedDate, utcTime.Format("2006-01-02"))
-	}
+			// Parse the result
+			parsedTime, err := time.Parse("15:04:05", localTimeStr)
+			if err != nil {
+				t.Fatalf("Failed to parse returned time %q: %v", localTimeStr, err)
+			}
 
-	if utcTime.Format("15:04:05") != expectedTime {
-		t.Errorf("Expected time %s, got %s", expectedTime, utcTime.Format("15:04:05"))
+			// Verify hour and minute
+			if parsedTime.Hour() != tt.expectedHour {
+				t.Errorf("Expected hour %d, got %d (timezone %s, offset UTC%+d)",
+					tt.expectedHour, parsedTime.Hour(), tt.timezoneName, tt.timezoneOffset)
+			}
+
+			if parsedTime.Minute() != tt.expectedMin {
+				t.Errorf("Expected minute %d, got %d", tt.expectedMin, parsedTime.Minute())
+			}
+		})
 	}
 }
