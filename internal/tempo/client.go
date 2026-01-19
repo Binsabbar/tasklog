@@ -59,56 +59,24 @@ type WorklogResponse struct {
 	} `json:"author"`
 }
 
-// AddWorklog adds a worklog entry to Tempo
-func (c *Client) AddWorklog(issueID, authorAccountID string, timeSpentSeconds int, started time.Time, label, description string) (*WorklogResponse, error) {
-	log.Debug().
-		Str("issue_id", issueID).
-		Int("seconds", timeSpentSeconds).
-		Str("label", label).
-		Msg("Adding worklog to Tempo")
-
-	// Use Tempo API v4 endpoint
-	endpoint := "https://api.tempo.io/4/worklogs"
-
-	// Format date and time for Tempo
-	// Tempo API v4 expects startTime in UTC when creating worklogs
-	startedUTC := started.UTC()
-	startDate := startedUTC.Format("2006-01-02")
-	startTime := startedUTC.Format("15:04:05")
-
-	payload := WorklogRequest{
-		IssueID:          issueID,
-		AuthorAccountID:  authorAccountID,
-		TimeSpentSeconds: timeSpentSeconds,
-		StartDate:        startDate,
-		StartTime:        startTime,
-		Description:      description,
+// GetLocalStartTime parses the UTC time from Tempo and converts it to local time for display
+func (w *WorklogResponse) GetLocalStartTime() string {
+	// Tempo returns time in UTC format: "HH:MM:SS"
+	// Parse as UTC and convert to local time
+	utcTimeStr := fmt.Sprintf("%sT%s", w.StartDate, w.StartTime)
+	utcTime, err := time.Parse("2006-01-02T15:04:05", utcTimeStr)
+	if err != nil {
+		// Fallback to original time if parsing fails
+		return w.StartTime
 	}
 
-	// Add label as an attribute if provided
-	// Note: The attribute key depends on your Tempo configuration
-	// You may need to adjust this based on your Tempo setup
-	if label != "" {
-		// Construct description with label
-		if payload.Description != "" {
-			payload.Description = fmt.Sprintf("[%s] %s", label, payload.Description)
-		} else {
-			payload.Description = fmt.Sprintf("[%s]", label)
-		}
-	}
+	// Parse as UTC
+	utcTime = time.Date(utcTime.Year(), utcTime.Month(), utcTime.Day(),
+		utcTime.Hour(), utcTime.Minute(), utcTime.Second(), 0, time.UTC)
 
-	var response WorklogResponse
-	if err := c.doRequest("POST", endpoint, payload, &response); err != nil {
-		return nil, fmt.Errorf("failed to add worklog to Tempo: %w", err)
-	}
-
-	log.Info().
-		Str("issue_id", issueID).
-		Int("tempo_id", response.TempoWorklogID).
-		Str("time", formatSeconds(timeSpentSeconds)).
-		Msg("Worklog added to Tempo successfully")
-
-	return &response, nil
+	// Convert to local time
+	localTime := utcTime.Local()
+	return localTime.Format("15:04:05")
 }
 
 // GetWorklogs retrieves worklogs for a date range
