@@ -359,6 +359,7 @@ func showTodaySummary(store *storage.Storage, jiraClient *jira.Client, tempoClie
 				syncInfo = "Not synced"
 			}
 
+			// Display format: Comment width increased from 12 to 20 to accommodate longer descriptions
 			fmt.Printf("  %s %s - %-10s [%-20s] %s (%s)\n",
 				syncStatus,
 				entry.Started.Format("15:04"),
