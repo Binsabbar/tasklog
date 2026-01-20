@@ -9,7 +9,7 @@ An interactive CLI tool for tracking time on Jira tasks with seamless integratio
 - 🎯 **Interactive Task Selection**: List your in-progress tasks (configurable statuses) or search for any task
 - 🔍 **Project Filtering**: Optionally filter tasks to a specific Jira project
 - ⏱️ **Flexible Time Entry**: Support for multiple time formats (2h 30m, 2.5h, 150m) - rounded to nearest 5 minutes
-- 🏷️ **Label Management**: Configure and use labels for categorizing work
+- 📝 **Required Descriptions**: Ensure all time logs have meaningful descriptions (required for Tempo compatibility)
 - ⚡ **Shortcuts**: Define shortcuts for repetitive tasks (perfect for cronjobs)
 - ⏸️ **Break Management**: Register breaks with automatic Slack status updates and channel notifications
 - 💬 **Slack Integration**: Update status and post messages when taking breaks (optional)
@@ -93,7 +93,7 @@ docker run \
 
    - Add your Jira URL, username, and API token
    - Add your Tempo API token
-   - Optionally configure labels and shortcuts
+   - Optionally configure shortcuts
 
 4. **Start logging time:**
 
@@ -156,38 +156,25 @@ tempo:
   enabled: false  # Set to true only if you need separate Tempo logging
   api_token: ""   # Only required if enabled is true
 
-# Optional: Filter labels that can be used for time logging
-# If not specified, labels will need to be entered manually
-labels:
-  allowed_labels:
-    - "development"
-    - "code-review"
-    - "meeting"
-    - "testing"
-    - "documentation"
-    - "bug-fix"
-
 # Jira shortcuts for quick time logging (defined under jira section above)
 jira:
   # ... (other jira config)
   
   # Optional: Define shortcuts for quick time logging
   # Shortcuts allow you to quickly log time without interactive prompts
+  # NOTE: Description/comment will still be prompted and is required
   shortcuts:
     - name: "daily"
       task: "PROJ-123"
       time: "30m"
-      label: "meeting"
     
     - name: "standup"
       task: "PROJ-123"
       time: "15m"
-      label: "meeting"
     
     - name: "code-review"
       task: "PROJ-456"
       # time not specified - will prompt user
-      label: "code-review"
 
 # Optional: Database path (defaults to ~/.tasklog/tasklog.db)
 database:
@@ -368,11 +355,10 @@ This will:
 1. Show your in-progress Jira tasks
 2. Let you select a task (or search/enter manually)
 3. Prompt for time spent
-4. Prompt for a label
-5. Ask for an optional comment
-6. Confirm before logging
-7. Log to Jira (automatically syncs to Tempo)
-8. Show today's summary from Tempo
+4. Ask for a description (required for Tempo compatibility)
+5. Confirm before logging
+6. Log to Jira (automatically syncs to Tempo)
+7. Show today's summary from Tempo
 
 ### Using Shortcuts
 
@@ -421,10 +407,10 @@ Skip interactive prompts by providing values via flags:
 
 ```bash
 # Log 2.5 hours to a specific task
-tasklog log --task PROJ-123 --time 2.5h --label development
+tasklog log --task PROJ-123 --time 2.5h
 
 # Short form
-tasklog log -t PROJ-123 -d 2h30m -l bug-fix
+tasklog log -t PROJ-123 -d 2h30m
 ```
 
 ### View Summary
