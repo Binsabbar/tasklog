@@ -30,7 +30,6 @@ func TestAddTimeEntry(t *testing.T) {
 		IssueSummary:     "Test issue",
 		TimeSpentSeconds: 3600,
 		TimeSpent:        "1h",
-		Label:            "development",
 		Comment:          "Test comment",
 		Started:          time.Now(),
 		SyncedToJira:     false,
@@ -59,7 +58,6 @@ func TestUpdateTimeEntry(t *testing.T) {
 		IssueSummary:     "Test issue",
 		TimeSpentSeconds: 3600,
 		TimeSpent:        "1h",
-		Label:            "development",
 		Started:          time.Now(),
 		SyncedToJira:     false,
 		SyncedToTempo:    false,
@@ -99,7 +97,7 @@ func TestGetTodayEntries(t *testing.T) {
 			IssueSummary:     "Test issue",
 			TimeSpentSeconds: 3600,
 			TimeSpent:        "1h",
-			Label:            "development",
+			Comment:          "Test work",
 			Started:          now,
 		}
 		err = store.AddTimeEntry(entry)
@@ -115,7 +113,7 @@ func TestGetTodayEntries(t *testing.T) {
 		IssueSummary:     "Yesterday issue",
 		TimeSpentSeconds: 1800,
 		TimeSpent:        "30m",
-		Label:            "testing",
+		Comment:          "Test work",
 		Started:          yesterday,
 	}
 	err = store.AddTimeEntry(entry)
@@ -146,7 +144,7 @@ func TestGetUnsyncedEntries(t *testing.T) {
 		IssueSummary:     "Synced issue",
 		TimeSpentSeconds: 3600,
 		TimeSpent:        "1h",
-		Label:            "development",
+		Comment:          "Test work",
 		Started:          time.Now(),
 		SyncedToJira:     true,
 		SyncedToTempo:    true,
@@ -163,7 +161,7 @@ func TestGetUnsyncedEntries(t *testing.T) {
 			IssueSummary:     "Unsynced issue",
 			TimeSpentSeconds: 1800,
 			TimeSpent:        "30m",
-			Label:            "testing",
+			Comment:          "Test work",
 			Started:          time.Now(),
 			SyncedToJira:     false,
 			SyncedToTempo:    false,
@@ -180,7 +178,7 @@ func TestGetUnsyncedEntries(t *testing.T) {
 		IssueSummary:     "Partial sync",
 		TimeSpentSeconds: 900,
 		TimeSpent:        "15m",
-		Label:            "meeting",
+		Comment:          "Test work",
 		Started:          time.Now(),
 		SyncedToJira:     true,
 		SyncedToTempo:    false,
@@ -219,7 +217,7 @@ func TestGetTodayTotalSeconds(t *testing.T) {
 			IssueSummary:     "Test issue",
 			TimeSpentSeconds: duration,
 			TimeSpent:        "test",
-			Label:            "development",
+			Comment:          "Test work",
 			Started:          now,
 		}
 		err = store.AddTimeEntry(entry)

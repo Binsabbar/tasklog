@@ -58,7 +58,7 @@ tempo:
   api_token: ""
 `,
 			expectUpToDate:    false,
-			expectMissingKeys: []string{"labels", "database", "slack", "update"},
+			expectMissingKeys: []string{"database", "slack", "update"},
 		},
 		{
 			name: "missing nested fields",
@@ -71,8 +71,6 @@ jira:
 tempo:
   enabled: false
   api_token: ""
-labels:
-  allowed_labels: []
 database:
   path: ""
 slack:
@@ -99,8 +97,6 @@ jira:
 tempo:
   enabled: false
   api_token: ""
-labels:
-  allowed_labels: []
 database:
   path: ""
 slack:

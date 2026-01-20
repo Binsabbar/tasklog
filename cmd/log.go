@@ -19,7 +19,6 @@ var (
 	shortcutName string
 	taskKey      string
 	timeSpent    string
-	label        string
 	startedAt    string
 )
 
@@ -43,7 +42,6 @@ func init() {
 
 	logCmd.Flags().StringVarP(&taskKey, "task", "t", "", "Task key (e.g., PROJ-123)")
 	logCmd.Flags().StringVarP(&timeSpent, "time", "d", "", "Time spent (e.g., 2h 30m, 2.5h, 150m)")
-	logCmd.Flags().StringVarP(&label, "label", "l", "", "Work log label")
 	logCmd.Flags().StringVarP(&startedAt, "at", "a", "", "When work was performed (e.g., 2pm, yesterday, 2h ago)")
 
 	// Set custom usage template to show available shortcuts
@@ -63,7 +61,7 @@ func logUsageFunc(cmd *cobra.Command) error {
 			if sc.Time != "" {
 				timeInfo = fmt.Sprintf(" (%s)", sc.Time)
 			}
-			fmt.Fprintf(cmd.OutOrStderr(), "  %-15s %s - %s%s\n", sc.Name, sc.Task, sc.Label, timeInfo)
+			fmt.Fprintf(cmd.OutOrStderr(), "  %-15s %s%s\n", sc.Name, sc.Task, timeInfo)
 		}
 		fmt.Fprintf(cmd.OutOrStderr(), "\n")
 	}
@@ -99,7 +97,6 @@ func runLog(cmd *cobra.Command, args []string) error {
 
 	var selectedIssue *jira.Issue
 	var timeSeconds int
-	var selectedLabel string
 
 	// Check if using a shortcut
 	if shortcutName != "" {
@@ -116,9 +113,6 @@ func runLog(cmd *cobra.Command, args []string) error {
 		}
 		if timeSpent == "" && shortcut.Time != "" {
 			timeSpent = shortcut.Time
-		}
-		if label == "" {
-			label = shortcut.Label
 		}
 	}
 
@@ -183,24 +177,7 @@ func runLog(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Get label
-	if label != "" {
-		if !cfg.IsLabelAllowed(label) {
-			return fmt.Errorf("label '%s' is not in the allowed labels list", label)
-		}
-		selectedLabel = label
-	} else {
-		selectedLabel, err = ui.SelectLabel(cfg.Labels.AllowedLabels)
-		if err != nil {
-			return fmt.Errorf("failed to select label: %w", err)
-		}
-
-		if !cfg.IsLabelAllowed(selectedLabel) {
-			return fmt.Errorf("label '%s' is not allowed", selectedLabel)
-		}
-	}
-
-	// Get optional comment
+	// Get required comment/description
 	comment, err := ui.PromptComment()
 	if err != nil {
 		return fmt.Errorf("failed to get comment: %w", err)
@@ -229,13 +206,10 @@ func runLog(cmd *cobra.Command, args []string) error {
 
 	// Confirm before logging
 	fmt.Printf("\n")
-	fmt.Printf("Task:    %s - %s\n", selectedIssue.Key, selectedIssue.Fields.Summary)
-	fmt.Printf("Time:    %s\n", timeparse.Format(timeSeconds))
-	fmt.Printf("Started: %s\n", started.Format("Mon Jan 2 15:04"))
-	fmt.Printf("Label:   %s\n", selectedLabel)
-	if comment != "" {
-		fmt.Printf("Comment: %s\n", comment)
-	}
+	fmt.Printf("Task:        %s - %s\n", selectedIssue.Key, selectedIssue.Fields.Summary)
+	fmt.Printf("Time:        %s\n", timeparse.Format(timeSeconds))
+	fmt.Printf("Started:     %s\n", started.Format("Mon Jan 2 15:04"))
+	fmt.Printf("Description: %s\n", comment)
 	fmt.Printf("\n")
 
 	confirmed, err := ui.Confirm("Log this time entry?")
@@ -254,7 +228,6 @@ func runLog(cmd *cobra.Command, args []string) error {
 		IssueSummary:     selectedIssue.Fields.Summary,
 		TimeSpentSeconds: timeSeconds,
 		TimeSpent:        timeparse.Format(timeSeconds),
-		Label:            selectedLabel,
 		Comment:          comment,
 		Started:          started,
 		SyncedToJira:     false,
@@ -386,11 +359,11 @@ func showTodaySummary(store *storage.Storage, jiraClient *jira.Client, tempoClie
 				syncInfo = "Not synced"
 			}
 
-			fmt.Printf("  %s %s - %-10s [%-12s] %s (%s)\n",
+			fmt.Printf("  %s %s - %-10s [%-20s] %s (%s)\n",
 				syncStatus,
 				entry.Started.Format("15:04"),
 				entry.TimeSpent,
-				entry.Label,
+				entry.Comment,
 				entry.IssueKey,
 				syncInfo,
 			)

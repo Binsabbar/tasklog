@@ -20,7 +20,6 @@ type Config struct {
 	Version  int            `yaml:"version,omitempty"` // Schema version for migrations
 	Jira     JiraConfig     `yaml:"jira"`
 	Tempo    TempoConfig    `yaml:"tempo"`
-	Labels   LabelsConfig   `yaml:"labels"`
 	Database DatabaseConfig `yaml:"database"`
 	Slack    SlackConfig    `yaml:"slack"`
 	Update   UpdateConfig   `yaml:"update"` // Update checking configuration (optional)
@@ -42,17 +41,11 @@ type TempoConfig struct {
 	Enabled  bool   `yaml:"enabled"`                                       // Whether to log to Tempo separately (optional, default: false)
 }
 
-// LabelsConfig contains label filtering configuration (optional)
-type LabelsConfig struct {
-	AllowedLabels []string `yaml:"allowed_labels"` // List of allowed labels from Jira (optional)
-}
-
-// ShortcutEntry represents a predefined shortcut for quick time logging (optional)
+// DatabaseConfig contains SQLite database configuration (optional)
 type ShortcutEntry struct {
-	Name  string `yaml:"name"`  // Shortcut name (e.g., "daily")
-	Task  string `yaml:"task"`  // Jira task key (e.g., "PROJ-123")
-	Time  string `yaml:"time"`  // Optional: predefined time (e.g., "30m")
-	Label string `yaml:"label"` // Work log label
+	Name string `yaml:"name"` // Shortcut name (e.g., "daily")
+	Task string `yaml:"task"` // Jira task key (e.g., "PROJ-123")
+	Time string `yaml:"time"` // Optional: predefined time (e.g., "30m")
 }
 
 // DatabaseConfig contains SQLite database configuration (optional)
@@ -197,20 +190,6 @@ func (c *Config) GetShortcut(name string) (*ShortcutEntry, bool) {
 		}
 	}
 	return nil, false
-}
-
-// IsLabelAllowed checks if a label is in the allowed list
-// If no allowed labels are configured, all labels are allowed
-func (c *Config) IsLabelAllowed(label string) bool {
-	if len(c.Labels.AllowedLabels) == 0 {
-		return true
-	}
-	for _, allowed := range c.Labels.AllowedLabels {
-		if allowed == label {
-			return true
-		}
-	}
-	return false
 }
 
 // GetBreak returns a break by name
