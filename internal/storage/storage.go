@@ -21,7 +21,6 @@ type TimeEntry struct {
 	IssueSummary     string    `json:"issue_summary"`
 	TimeSpentSeconds int       `json:"time_spent_seconds"`
 	TimeSpent        string    `json:"time_spent"`
-	Label            string    `json:"label"`
 	Comment          string    `json:"comment"`
 	Started          time.Time `json:"started"`
 	CreatedAt        time.Time `json:"created_at"`
@@ -65,8 +64,7 @@ func (s *Storage) initSchema() error {
 		issue_summary TEXT NOT NULL,
 		time_spent_seconds INTEGER NOT NULL,
 		time_spent TEXT NOT NULL,
-		label TEXT NOT NULL,
-		comment TEXT,
+		comment TEXT NOT NULL,
 		started DATETIME NOT NULL,
 		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		synced_to_jira BOOLEAN NOT NULL DEFAULT 0,
@@ -93,15 +91,14 @@ func (s *Storage) AddTimeEntry(entry *TimeEntry) error {
 	log.Debug().
 		Str("issue", entry.IssueKey).
 		Int("seconds", entry.TimeSpentSeconds).
-		Str("label", entry.Label).
 		Msg("Adding time entry")
 
 	query := `
 		INSERT INTO time_entries (
 			issue_key, issue_summary, time_spent_seconds, time_spent,
-			label, comment, started, synced_to_jira, synced_to_tempo,
+			comment, started, synced_to_jira, synced_to_tempo,
 			jira_worklog_id, tempo_worklog_id
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	result, err := s.db.Exec(
@@ -110,7 +107,6 @@ func (s *Storage) AddTimeEntry(entry *TimeEntry) error {
 		entry.IssueSummary,
 		entry.TimeSpentSeconds,
 		entry.TimeSpent,
-		entry.Label,
 		entry.Comment,
 		entry.Started,
 		entry.SyncedToJira,
@@ -172,7 +168,7 @@ func (s *Storage) GetTodayEntries() ([]TimeEntry, error) {
 	query := `
 		SELECT 
 			id, issue_key, issue_summary, time_spent_seconds, time_spent,
-			label, comment, started, created_at, synced_to_jira, synced_to_tempo,
+			comment, started, created_at, synced_to_jira, synced_to_tempo,
 			jira_worklog_id, tempo_worklog_id
 		FROM time_entries
 		WHERE started >= ? AND started < ?
@@ -194,7 +190,6 @@ func (s *Storage) GetTodayEntries() ([]TimeEntry, error) {
 			&entry.IssueSummary,
 			&entry.TimeSpentSeconds,
 			&entry.TimeSpent,
-			&entry.Label,
 			&entry.Comment,
 			&entry.Started,
 			&entry.CreatedAt,
@@ -224,7 +219,7 @@ func (s *Storage) GetUnsyncedEntries() ([]TimeEntry, error) {
 	query := `
 		SELECT 
 			id, issue_key, issue_summary, time_spent_seconds, time_spent,
-			label, comment, started, created_at, synced_to_jira, synced_to_tempo,
+			comment, started, created_at, synced_to_jira, synced_to_tempo,
 			jira_worklog_id, tempo_worklog_id
 		FROM time_entries
 		WHERE synced_to_jira = 0 OR synced_to_tempo = 0
@@ -246,7 +241,6 @@ func (s *Storage) GetUnsyncedEntries() ([]TimeEntry, error) {
 			&entry.IssueSummary,
 			&entry.TimeSpentSeconds,
 			&entry.TimeSpent,
-			&entry.Label,
 			&entry.Comment,
 			&entry.Started,
 			&entry.CreatedAt,

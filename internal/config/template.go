@@ -22,38 +22,25 @@ func GenerateExampleConfig() ([]byte, error) {
 			},
 			Shortcuts: []ShortcutEntry{
 				{
-					Name:  "daily",
-					Task:  "PROJ-123",
-					Time:  "30m",
-					Label: "meeting",
+					Name: "daily",
+					Task: "PROJ-123",
+					Time: "30m",
 				},
 				{
-					Name:  "standup",
-					Task:  "PROJ-123",
-					Time:  "15m",
-					Label: "meeting",
+					Name: "standup",
+					Task: "PROJ-123",
+					Time: "15m",
 				},
 				{
-					Name:  "code-review",
-					Task:  "PROJ-456",
-					Time:  "",
-					Label: "code-review",
+					Name: "code-review",
+					Task: "PROJ-456",
+					Time: "",
 				},
 			},
 		},
 		Tempo: TempoConfig{
 			Enabled:  false,
 			APIToken: "",
-		},
-		Labels: LabelsConfig{
-			AllowedLabels: []string{
-				"development",
-				"code-review",
-				"meeting",
-				"testing",
-				"documentation",
-				"bug-fix",
-			},
 		},
 		Database: DatabaseConfig{
 			Path: "",
@@ -123,8 +110,6 @@ func addConfigComments(node *yaml.Node) {
 			valueNode.HeadComment = "Jira configuration (required)"
 		case "tempo":
 			valueNode.HeadComment = "Tempo configuration (optional - only if logging separately to Tempo)"
-		case "labels":
-			valueNode.HeadComment = "Allowed labels for time logging (optional - if empty, all Jira labels available)"
 		case "database":
 			valueNode.HeadComment = "Database configuration (optional)"
 		case "slack":

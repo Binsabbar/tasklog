@@ -149,49 +149,14 @@ func PromptTimeSpent() (string, error) {
 	return timeSpent, nil
 }
 
-// SelectLabel prompts the user to select a label
-func SelectLabel(allowedLabels []string) (string, error) {
-	if len(allowedLabels) == 0 {
-		// If no labels configured, allow free text
-		return promptFreeTextLabel()
-	}
-
-	var selected string
-	prompt := &survey.Select{
-		Message:  "Select a label:",
-		Options:  allowedLabels,
-		PageSize: 10,
-	}
-
-	if err := survey.AskOne(prompt, &selected); err != nil {
-		return "", err
-	}
-
-	return selected, nil
-}
-
-// promptFreeTextLabel prompts for a free-text label
-func promptFreeTextLabel() (string, error) {
-	var label string
-	prompt := &survey.Input{
-		Message: "Enter a label:",
-	}
-
-	if err := survey.AskOne(prompt, &label, survey.WithValidator(survey.Required)); err != nil {
-		return "", err
-	}
-
-	return label, nil
-}
-
-// PromptComment prompts the user for an optional comment
+// PromptComment prompts the user for a required comment/description
 func PromptComment() (string, error) {
 	var comment string
 	prompt := &survey.Input{
-		Message: "Enter a comment (optional):",
+		Message: "Enter a description (required for Tempo):",
 	}
 
-	if err := survey.AskOne(prompt, &comment); err != nil {
+	if err := survey.AskOne(prompt, &comment, survey.WithValidator(survey.Required)); err != nil {
 		return "", err
 	}
 

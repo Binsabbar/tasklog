@@ -42,7 +42,6 @@ func TestCreateNewConfig(t *testing.T) {
 		"slack:",
 		"breaks:",
 		"tempo:",
-		"labels:",
 		"database:",
 		"update:",
 	}

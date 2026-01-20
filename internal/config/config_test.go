@@ -128,8 +128,8 @@ func TestGetShortcut(t *testing.T) {
 	config := Config{
 		Jira: JiraConfig{
 			Shortcuts: []ShortcutEntry{
-				{Name: "daily", Task: "PROJ-123", Time: "30m", Label: "meeting"},
-				{Name: "standup", Task: "PROJ-456", Time: "15m", Label: "meeting"},
+				{Name: "daily", Task: "PROJ-123", Time: "30m"},
+				{Name: "standup", Task: "PROJ-456", Time: "15m"},
 			},
 		},
 	}
@@ -153,61 +153,6 @@ func TestGetShortcut(t *testing.T) {
 			}
 			if found && shortcut.Task != tt.wantTask {
 				t.Errorf("expected task %s, got %s", tt.wantTask, shortcut.Task)
-			}
-		})
-	}
-}
-
-func TestIsLabelAllowed(t *testing.T) {
-	tests := []struct {
-		name    string
-		config  Config
-		label   string
-		allowed bool
-	}{
-		{
-			name: "label in allowed list",
-			config: Config{
-				Labels: LabelsConfig{
-					AllowedLabels: []string{"development", "testing", "meeting"},
-				},
-			},
-			label:   "development",
-			allowed: true,
-		},
-		{
-			name: "label not in allowed list",
-			config: Config{
-				Labels: LabelsConfig{
-					AllowedLabels: []string{"development", "testing"},
-				},
-			},
-			label:   "meeting",
-			allowed: false,
-		},
-		{
-			name: "empty allowed list allows all",
-			config: Config{
-				Labels: LabelsConfig{
-					AllowedLabels: []string{},
-				},
-			},
-			label:   "anything",
-			allowed: true,
-		},
-		{
-			name:    "no labels config allows all",
-			config:  Config{},
-			label:   "anything",
-			allowed: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := tt.config.IsLabelAllowed(tt.label)
-			if result != tt.allowed {
-				t.Errorf("expected %v, got %v", tt.allowed, result)
 			}
 		})
 	}
@@ -292,15 +237,9 @@ jira:
     - name: "daily"
       task: "PROJ-123"
       time: "30m"
-      label: "meeting"
 
 tempo:
   api_token: "tempo-token"
-
-labels:
-  allowed_labels:
-    - "development"
-    - "testing"
 `
 	err := os.WriteFile(configPath, []byte(validConfig), 0600)
 	if err != nil {
@@ -333,10 +272,6 @@ labels:
 
 	if len(config.Jira.TaskStatuses) > 1 && config.Jira.TaskStatuses[1] != "In Review" {
 		t.Errorf("expected second task status to be 'In Review', got %s", config.Jira.TaskStatuses[1])
-	}
-
-	if len(config.Labels.AllowedLabels) != 2 {
-		t.Errorf("expected 2 labels, got %d", len(config.Labels.AllowedLabels))
 	}
 
 	if len(config.Jira.Shortcuts) != 1 {
