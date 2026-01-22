@@ -55,8 +55,32 @@ func (s *Storage) Close() error {
 	return s.db.Close()
 }
 
-// initSchema creates the database schema
+// initSchema creates the database schema and runs migrations
 func (s *Storage) initSchema() error {
+	// Create schema_version table if it doesn't exist
+	versionSchema := `
+	CREATE TABLE IF NOT EXISTS schema_version (
+		version INTEGER PRIMARY KEY
+	);
+	`
+	if _, err := s.db.Exec(versionSchema); err != nil {
+		return fmt.Errorf("failed to create schema_version table: %w", err)
+	}
+
+	// Get current schema version
+	currentVersion, err := s.getSchemaVersion()
+	if err != nil {
+		return fmt.Errorf("failed to get schema version: %w", err)
+	}
+
+	log.Debug().Int("version", currentVersion).Msg("Current schema version")
+
+	// Run migrations
+	if err := s.runMigrations(currentVersion); err != nil {
+		return fmt.Errorf("failed to run migrations: %w", err)
+	}
+
+	// Create initial schema (for new installations)
 	schema := `
 	CREATE TABLE IF NOT EXISTS time_entries (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -83,6 +107,186 @@ func (s *Storage) initSchema() error {
 		return fmt.Errorf("failed to create schema: %w", err)
 	}
 
+	return nil
+}
+
+// getSchemaVersion returns the current schema version
+func (s *Storage) getSchemaVersion() (int, error) {
+	var version int
+	err := s.db.QueryRow("SELECT version FROM schema_version LIMIT 1").Scan(&version)
+	if err == sql.ErrNoRows {
+		// No version set, check if time_entries table exists
+		var tableName string
+		err := s.db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='time_entries'").Scan(&tableName)
+		if err == sql.ErrNoRows {
+			// Fresh installation
+			return 0, nil
+		}
+		if err != nil {
+			return 0, err
+		}
+		// Table exists but no version - this is v1
+		return 1, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return version, nil
+}
+
+// setSchemaVersion sets the schema version
+func (s *Storage) setSchemaVersion(version int) error {
+	_, err := s.db.Exec("DELETE FROM schema_version")
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec("INSERT INTO schema_version (version) VALUES (?)", version)
+	return err
+}
+
+// runMigrations runs all migrations from the current version to the latest
+func (s *Storage) runMigrations(currentVersion int) error {
+	migrations := []struct {
+		version int
+		migrate func() error
+	}{
+		{2, s.migrateV1ToV2}, // Remove label column, make comment NOT NULL
+	}
+
+	for _, migration := range migrations {
+		if currentVersion < migration.version {
+			log.Info().Int("version", migration.version).Msg("Running migration")
+			if err := migration.migrate(); err != nil {
+				return fmt.Errorf("failed to migrate to version %d: %w", migration.version, err)
+			}
+			if err := s.setSchemaVersion(migration.version); err != nil {
+				return fmt.Errorf("failed to set schema version: %w", err)
+			}
+			log.Info().Int("version", migration.version).Msg("Migration completed successfully")
+		}
+	}
+
+	return nil
+}
+
+// migrateV1ToV2 removes the label column and makes comment NOT NULL
+func (s *Storage) migrateV1ToV2() error {
+	log.Info().Msg("Migrating database from v1 to v2: removing label column, making comment NOT NULL")
+
+	// Check if label column exists
+	var hasLabel bool
+	rows, err := s.db.Query("PRAGMA table_info(time_entries)")
+	if err != nil {
+		return fmt.Errorf("failed to query table info: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid int
+		var name string
+		var typ string
+		var notnull int
+		var dfltValue *string
+		var pk int
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &dfltValue, &pk); err != nil {
+			return fmt.Errorf("failed to scan column info: %w", err)
+		}
+		if name == "label" {
+			hasLabel = true
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("error iterating columns: %w", err)
+	}
+
+	if !hasLabel {
+		log.Debug().Msg("Label column does not exist, skipping migration")
+		return nil
+	}
+
+	// SQLite doesn't support DROP COLUMN directly in older versions
+	// We need to create a new table and copy data
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback() // Rollback is safe to call even after Commit
+	}()
+
+	// First, set default value for empty comments
+	_, err = tx.Exec("UPDATE time_entries SET comment = label WHERE comment IS NULL OR comment = ''")
+	if err != nil {
+		return fmt.Errorf("failed to update empty comments: %w", err)
+	}
+
+	// Create new table with updated schema
+	_, err = tx.Exec(`
+		CREATE TABLE time_entries_new (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			issue_key TEXT NOT NULL,
+			issue_summary TEXT NOT NULL,
+			time_spent_seconds INTEGER NOT NULL,
+			time_spent TEXT NOT NULL,
+			comment TEXT NOT NULL,
+			started DATETIME NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			synced_to_jira BOOLEAN NOT NULL DEFAULT 0,
+			synced_to_tempo BOOLEAN NOT NULL DEFAULT 0,
+			jira_worklog_id TEXT,
+			tempo_worklog_id TEXT
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to create new table: %w", err)
+	}
+
+	// Copy data from old table to new table
+	_, err = tx.Exec(`
+		INSERT INTO time_entries_new (
+			id, issue_key, issue_summary, time_spent_seconds, time_spent,
+			comment, started, created_at, synced_to_jira, synced_to_tempo,
+			jira_worklog_id, tempo_worklog_id
+		)
+		SELECT 
+			id, issue_key, issue_summary, time_spent_seconds, time_spent,
+			comment, started, created_at, synced_to_jira, synced_to_tempo,
+			jira_worklog_id, tempo_worklog_id
+		FROM time_entries
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to copy data: %w", err)
+	}
+
+	// Drop old table
+	_, err = tx.Exec("DROP TABLE time_entries")
+	if err != nil {
+		return fmt.Errorf("failed to drop old table: %w", err)
+	}
+
+	// Rename new table
+	_, err = tx.Exec("ALTER TABLE time_entries_new RENAME TO time_entries")
+	if err != nil {
+		return fmt.Errorf("failed to rename table: %w", err)
+	}
+
+	// Recreate indexes
+	_, err = tx.Exec(`
+		CREATE INDEX idx_time_entries_issue_key ON time_entries(issue_key);
+		CREATE INDEX idx_time_entries_started ON time_entries(started);
+		CREATE INDEX idx_time_entries_created_at ON time_entries(created_at);
+		CREATE INDEX idx_time_entries_synced ON time_entries(synced_to_jira, synced_to_tempo);
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to create indexes: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	log.Info().Msg("Successfully migrated database: label column removed, comment is now NOT NULL")
 	return nil
 }
 

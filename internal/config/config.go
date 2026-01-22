@@ -41,7 +41,7 @@ type TempoConfig struct {
 	Enabled  bool   `yaml:"enabled"`                                       // Whether to log to Tempo separately (optional, default: false)
 }
 
-// DatabaseConfig contains SQLite database configuration (optional)
+// ShortcutEntry represents a predefined shortcut for quick time logging
 type ShortcutEntry struct {
 	Name string `yaml:"name"` // Shortcut name (e.g., "daily")
 	Task string `yaml:"task"` // Jira task key (e.g., "PROJ-123")

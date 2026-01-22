@@ -264,3 +264,239 @@ func TestClose(t *testing.T) {
 		t.Errorf("failed to close storage: %v", err)
 	}
 }
+
+func TestMigrationV1ToV2(t *testing.T) {
+	// Create a temporary database file for migration testing
+	tmpDir := t.TempDir()
+	dbPath := tmpDir + "/test_migration.db"
+
+	// Create storage with old schema (v1)
+	store, err := NewStorage(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create storage: %v", err)
+	}
+
+	// Create old schema manually with label column
+	_, err = store.db.Exec(`
+		DROP TABLE IF EXISTS time_entries;
+		DROP TABLE IF EXISTS schema_version;
+	`)
+	if err != nil {
+		t.Fatalf("failed to drop tables: %v", err)
+	}
+
+	// Create old schema with label column
+	_, err = store.db.Exec(`
+		CREATE TABLE time_entries (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			issue_key TEXT NOT NULL,
+			issue_summary TEXT NOT NULL,
+			time_spent_seconds INTEGER NOT NULL,
+			time_spent TEXT NOT NULL,
+			label TEXT NOT NULL,
+			comment TEXT,
+			started DATETIME NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			synced_to_jira BOOLEAN NOT NULL DEFAULT 0,
+			synced_to_tempo BOOLEAN NOT NULL DEFAULT 0,
+			jira_worklog_id TEXT,
+			tempo_worklog_id TEXT
+		)
+	`)
+	if err != nil {
+		t.Fatalf("failed to create old schema: %v", err)
+	}
+
+	// Insert test data with label and empty comment
+	now := time.Now()
+	_, err = store.db.Exec(`
+		INSERT INTO time_entries (
+			issue_key, issue_summary, time_spent_seconds, time_spent,
+			label, comment, started
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, "PROJ-123", "Test issue", 3600, "1h", "development", "", now)
+	if err != nil {
+		t.Fatalf("failed to insert test data: %v", err)
+	}
+
+	// Insert test data with label and comment
+	_, err = store.db.Exec(`
+		INSERT INTO time_entries (
+			issue_key, issue_summary, time_spent_seconds, time_spent,
+			label, comment, started
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, "PROJ-456", "Test issue 2", 1800, "30m", "testing", "Custom comment", now)
+	if err != nil {
+		t.Fatalf("failed to insert test data: %v", err)
+	}
+
+	// Create schema_version table with version 1
+	_, err = store.db.Exec(`
+		CREATE TABLE schema_version (version INTEGER PRIMARY KEY);
+		INSERT INTO schema_version (version) VALUES (1);
+	`)
+	if err != nil {
+		t.Fatalf("failed to create schema_version: %v", err)
+	}
+
+	store.Close()
+
+	// Reopen storage to trigger migration
+	store, err = NewStorage(dbPath)
+	if err != nil {
+		t.Fatalf("failed to reopen storage: %v", err)
+	}
+	defer store.Close()
+
+	// Verify schema version is now 2
+	version, err := store.getSchemaVersion()
+	if err != nil {
+		t.Fatalf("failed to get schema version: %v", err)
+	}
+	if version != 2 {
+		t.Errorf("expected schema version 2, got %d", version)
+	}
+
+	// Verify label column is removed
+	rows, err := store.db.Query("PRAGMA table_info(time_entries)")
+	if err != nil {
+		t.Fatalf("failed to query table info: %v", err)
+	}
+	defer rows.Close()
+
+	hasLabel := false
+	hasComment := false
+	commentNotNull := false
+
+	for rows.Next() {
+		var cid int
+		var name string
+		var typ string
+		var notnull int
+		var dfltValue *string
+		var pk int
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &dfltValue, &pk); err != nil {
+			t.Fatalf("failed to scan column info: %v", err)
+		}
+		if name == "label" {
+			hasLabel = true
+		}
+		if name == "comment" {
+			hasComment = true
+			commentNotNull = notnull == 1
+		}
+	}
+
+	if hasLabel {
+		t.Error("label column should have been removed")
+	}
+	if !hasComment {
+		t.Error("comment column should exist")
+	}
+	if !commentNotNull {
+		t.Error("comment column should be NOT NULL")
+	}
+
+	// Verify data migration
+	// Entry with empty comment should now have label value as comment
+	var comment1 string
+	err = store.db.QueryRow("SELECT comment FROM time_entries WHERE issue_key = 'PROJ-123'").Scan(&comment1)
+	if err != nil {
+		t.Fatalf("failed to query first entry: %v", err)
+	}
+	if comment1 != "development" {
+		t.Errorf("expected comment to be 'development' (from label), got '%s'", comment1)
+	}
+
+	// Entry with comment should keep its comment
+	var comment2 string
+	err = store.db.QueryRow("SELECT comment FROM time_entries WHERE issue_key = 'PROJ-456'").Scan(&comment2)
+	if err != nil {
+		t.Fatalf("failed to query second entry: %v", err)
+	}
+	if comment2 != "Custom comment" {
+		t.Errorf("expected comment to be 'Custom comment', got '%s'", comment2)
+	}
+}
+
+func TestFreshInstallation(t *testing.T) {
+	// Create storage with no existing database
+	tmpDir := t.TempDir()
+	dbPath := tmpDir + "/test_fresh.db"
+
+	store, err := NewStorage(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create storage: %v", err)
+	}
+	defer store.Close()
+
+	// Fresh installation should have schema version 2 after migration runs
+	// (migration is idempotent and checks if label column exists)
+	version, err := store.getSchemaVersion()
+	if err != nil {
+		t.Fatalf("failed to get schema version: %v", err)
+	}
+
+	// For a fresh install, the migration runs but detects no label column
+	// and sets version to 2
+	if version != 2 {
+		t.Errorf("expected schema version 2 for fresh install, got %d", version)
+	}
+
+	// Verify table structure is correct
+	rows, err := store.db.Query("PRAGMA table_info(time_entries)")
+	if err != nil {
+		t.Fatalf("failed to query table info: %v", err)
+	}
+	defer rows.Close()
+
+	hasLabel := false
+	hasComment := false
+	commentNotNull := false
+
+	for rows.Next() {
+		var cid int
+		var name string
+		var typ string
+		var notnull int
+		var dfltValue *string
+		var pk int
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &dfltValue, &pk); err != nil {
+			t.Fatalf("failed to scan column info: %v", err)
+		}
+		if name == "label" {
+			hasLabel = true
+		}
+		if name == "comment" {
+			hasComment = true
+			commentNotNull = notnull == 1
+		}
+	}
+
+	if hasLabel {
+		t.Error("fresh install should not have label column")
+	}
+	if !hasComment {
+		t.Error("comment column should exist")
+	}
+	if !commentNotNull {
+		t.Error("comment column should be NOT NULL")
+	}
+
+	// Test that we can add an entry with comment
+	entry := &TimeEntry{
+		IssueKey:         "PROJ-123",
+		IssueSummary:     "Test issue",
+		TimeSpentSeconds: 3600,
+		TimeSpent:        "1h",
+		Comment:          "Test comment",
+		Started:          time.Now(),
+		SyncedToJira:     false,
+		SyncedToTempo:    false,
+	}
+
+	err = store.AddTimeEntry(entry)
+	if err != nil {
+		t.Fatalf("failed to add time entry: %v", err)
+	}
+}
