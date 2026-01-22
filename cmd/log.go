@@ -19,6 +19,7 @@ var (
 	shortcutName string
 	taskKey      string
 	timeSpent    string
+	commentFlag  string
 	startedAt    string
 )
 
@@ -42,6 +43,7 @@ func init() {
 
 	logCmd.Flags().StringVarP(&taskKey, "task", "t", "", "Task key (e.g., PROJ-123)")
 	logCmd.Flags().StringVarP(&timeSpent, "time", "d", "", "Time spent (e.g., 2h 30m, 2.5h, 150m)")
+	logCmd.Flags().StringVarP(&commentFlag, "comment", "c", "", "Description/comment for the time entry")
 	logCmd.Flags().StringVarP(&startedAt, "at", "a", "", "When work was performed (e.g., 2pm, yesterday, 2h ago)")
 
 	// Set custom usage template to show available shortcuts
@@ -114,6 +116,9 @@ func runLog(cmd *cobra.Command, args []string) error {
 		if timeSpent == "" && shortcut.Time != "" {
 			timeSpent = shortcut.Time
 		}
+		if commentFlag == "" && shortcut.Comment != "" {
+			commentFlag = shortcut.Comment
+		}
 	}
 
 	// Get task
@@ -178,9 +183,15 @@ func runLog(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get required comment/description
-	comment, err := ui.PromptComment()
-	if err != nil {
-		return fmt.Errorf("failed to get comment: %w", err)
+	var comment string
+	if commentFlag != "" {
+		comment = commentFlag
+	} else {
+		var err error
+		comment, err = ui.PromptComment()
+		if err != nil {
+			return fmt.Errorf("failed to get comment: %w", err)
+		}
 	}
 
 	// Get start time

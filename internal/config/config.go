@@ -43,9 +43,10 @@ type TempoConfig struct {
 
 // ShortcutEntry represents a predefined shortcut for quick time logging
 type ShortcutEntry struct {
-	Name string `yaml:"name"` // Shortcut name (e.g., "daily")
-	Task string `yaml:"task"` // Jira task key (e.g., "PROJ-123")
-	Time string `yaml:"time"` // Optional: predefined time (e.g., "30m")
+	Name    string `yaml:"name"`    // Shortcut name (e.g., "daily")
+	Task    string `yaml:"task"`    // Jira task key (e.g., "PROJ-123")
+	Time    string `yaml:"time"`    // Optional: predefined time (e.g., "30m")
+	Comment string `yaml:"comment"` // Optional: predefined description/comment
 }
 
 // DatabaseConfig contains SQLite database configuration (optional)
