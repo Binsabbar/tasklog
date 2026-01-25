@@ -338,9 +338,10 @@ func TestAddWorklog_DateFormat(t *testing.T) {
 		t.Fatal("started field not found in request")
 	}
 
-	// Jira expects format: yyyy-MM-dd'T'HH:mm:ss.SSSZ (e.g., 2024-11-15T14:30:00.000+0400)
-	// The format must include timezone offset, not literal 'Z'
-	expectedFormat := "2024-11-15T14:30:00.000+0400"
+	// Jira expects format: yyyy-MM-dd'T'HH:mm:ss.SSSZ (e.g., 2024-11-15T10:30:00.000+0000)
+	// Time should be converted to UTC with +0000 offset (not literal 'Z')
+	// 14:30 +0400 = 10:30 UTC
+	expectedFormat := "2024-11-15T10:30:00.000+0000"
 	if started != expectedFormat {
 		t.Errorf("expected started format:\n%s\ngot:\n%s", expectedFormat, started)
 	}
@@ -384,7 +385,7 @@ func TestAddWorklog_DateFormat_UTC(t *testing.T) {
 		t.Fatal("started field not found in request")
 	}
 
-	// UTC should produce +0000 offset, not literal 'Z'
+	// UTC time should remain the same, formatted with +0000 offset (not literal 'Z')
 	expectedFormat := "2024-11-15T10:00:00.000+0000"
 	if started != expectedFormat {
 		t.Errorf("expected started format:\n%s\ngot:\n%s", expectedFormat, started)

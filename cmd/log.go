@@ -75,15 +75,21 @@ func logUsageFunc(cmd *cobra.Command) error {
 }
 
 func runLog(cmd *cobra.Command, args []string) error {
-	// Check if first argument is a shortcut name
-	if len(args) > 0 {
-		shortcutName = args[0]
-	}
-
 	// Load configuration
 	cfg, err := checkConfig()
 	if err != nil {
 		return err
+	}
+
+	// Check if first argument is a shortcut name
+	var shortcut *config.ShortcutEntry = nil
+	if len(args) > 0 {
+		shortcutName = args[0]
+		found := true
+		shortcut, found = cfg.GetShortcut(shortcutName)
+		if !found {
+			return fmt.Errorf("shortcut '%s' not found in configuration", shortcutName)
+		}
 	}
 
 	// Initialize clients
@@ -101,13 +107,8 @@ func runLog(cmd *cobra.Command, args []string) error {
 	var timeSeconds int
 
 	// Check if using a shortcut
-	if shortcutName != "" {
-		log.Debug().Str("shortcut", shortcutName).Msg("Using shortcut")
-
-		shortcut, found := cfg.GetShortcut(shortcutName)
-		if !found {
-			return fmt.Errorf("shortcut '%s' not found in configuration", shortcutName)
-		}
+	if shortcut != nil {
+		log.Debug().Str("shortcut", shortcut.Name).Msg("Using shortcut")
 
 		// Use shortcut values
 		if taskKey == "" {
@@ -341,10 +342,10 @@ func showTodaySummary(store *storage.Storage, jiraClient *jira.Client, tempoClie
 	if len(tempoWorklogs) > 0 {
 		for _, wl := range tempoWorklogs {
 			fmt.Printf("  %s - %-10s [%-12s] %s\n",
-				wl.GetLocalStartTime(), // Convert UTC to local time for display
+				wl.GetLocalStartTime(),
 				timeparse.Format(wl.TimeSpentSeconds),
 				wl.Description,
-				wl.IssueKey,
+				wl.IssueKey(),
 			)
 		}
 	}

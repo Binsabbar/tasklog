@@ -48,35 +48,39 @@ type WorklogAttribute struct {
 type WorklogResponse struct {
 	TempoWorklogID   int    `json:"tempoWorklogId"`
 	JiraWorklogID    int    `json:"jiraWorklogId"`
-	IssueKey         string `json:"issueKey"`
 	TimeSpentSeconds int    `json:"timeSpentSeconds"`
 	StartDate        string `json:"startDate"`
 	StartTime        string `json:"startTime"`
+	StartDateTimeUtc string `json:"startDateTimeUtc"` // UTC time: "2024-01-25T10:00:00Z"
 	Description      string `json:"description"`
 	CreatedAt        string `json:"createdAt"`
 	Author           struct {
 		AccountID string `json:"accountId"`
 	} `json:"author"`
+	// Tempo API v4 nests issue info in an object
+	Issue struct {
+		Key string `json:"key"`
+		ID  int    `json:"id"`
+	} `json:"issue"`
 }
 
-// GetLocalStartTime parses the UTC time from Tempo and converts it to local time for display
+// IssueKey returns the issue key from the nested issue object
+func (w *WorklogResponse) IssueKey() string {
+	return w.Issue.Key
+}
+
+// GetLocalStartTime converts the UTC time from Tempo to user's local timezone
 func (w *WorklogResponse) GetLocalStartTime() string {
-	// Tempo returns time in UTC format: "HH:MM:SS"
-	// Parse as UTC and convert to local time
-	utcTimeStr := fmt.Sprintf("%sT%s", w.StartDate, w.StartTime)
-	utcTime, err := time.Parse("2006-01-02T15:04:05", utcTimeStr)
-	if err != nil {
-		// Fallback to original time if parsing fails
-		return w.StartTime
+	// Use startDateTimeUtc for accurate timezone conversion
+	// This handles cases where Tempo's configured timezone differs from user's local timezone
+	if w.StartDateTimeUtc != "" {
+		utcTime, err := time.Parse(time.RFC3339, w.StartDateTimeUtc)
+		if err == nil {
+			return utcTime.Local().Format("15:04:05")
+		}
 	}
-
-	// Parse as UTC
-	utcTime = time.Date(utcTime.Year(), utcTime.Month(), utcTime.Day(),
-		utcTime.Hour(), utcTime.Minute(), utcTime.Second(), 0, time.UTC)
-
-	// Convert to local time
-	localTime := utcTime.Local()
-	return localTime.Format("15:04:05")
+	// Fallback to startTime if UTC not available
+	return w.StartTime
 }
 
 // GetWorklogs retrieves worklogs for a date range

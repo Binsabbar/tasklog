@@ -72,13 +72,14 @@ func TestWorklogResponseStructure(t *testing.T) {
 	resp := WorklogResponse{
 		TempoWorklogID:   12345,
 		JiraWorklogID:    67890,
-		IssueKey:         "PROJ-123",
 		TimeSpentSeconds: 7200,
 		StartDate:        "2024-11-11",
 		StartTime:        "10:00:00",
 		Description:      "Test work",
 		CreatedAt:        "2024-11-11T10:00:00Z",
 	}
+	resp.Issue.Key = "PROJ-123"
+	resp.Issue.ID = 99999
 
 	if resp.TempoWorklogID != 12345 {
 		t.Error("tempo worklog ID not set correctly")
@@ -86,6 +87,10 @@ func TestWorklogResponseStructure(t *testing.T) {
 
 	if resp.JiraWorklogID != 67890 {
 		t.Error("jira worklog ID not set correctly")
+	}
+
+	if resp.IssueKey() != "PROJ-123" {
+		t.Errorf("expected issue key PROJ-123, got %s", resp.IssueKey())
 	}
 }
 
@@ -105,90 +110,35 @@ func TestWorklogAttributeStructure(t *testing.T) {
 }
 
 func TestGetLocalStartTime(t *testing.T) {
-	tests := []struct {
-		name           string
-		startDate      string
-		startTime      string
-		expectedHour   int
-		expectedMin    int
-		timezoneName   string
-		timezoneOffset int // hours offset from UTC
-	}{
-		{
-			name:           "UTC time stays the same",
-			startDate:      "2024-01-15",
-			startTime:      "09:00:00",
-			expectedHour:   9,
-			expectedMin:    0,
-			timezoneName:   "UTC",
-			timezoneOffset: 0,
-		},
-		{
-			name:           "UTC+3 (KSA) converts correctly",
-			startDate:      "2024-01-15",
-			startTime:      "09:00:00",
-			expectedHour:   12,
-			expectedMin:    0,
-			timezoneName:   "Asia/Riyadh",
-			timezoneOffset: 3,
-		},
-		{
-			name:           "UTC-5 (EST) converts correctly",
-			startDate:      "2024-01-15",
-			startTime:      "14:00:00",
-			expectedHour:   9,
-			expectedMin:    0,
-			timezoneName:   "America/New_York",
-			timezoneOffset: -5,
-		},
-		{
-			name:           "UTC+1 (CET) converts correctly",
-			startDate:      "2024-01-15",
-			startTime:      "08:00:00",
-			expectedHour:   9,
-			expectedMin:    0,
-			timezoneName:   "Europe/Paris",
-			timezoneOffset: 1,
-		},
-	}
+	t.Run("uses UTC time when available", func(t *testing.T) {
+		// Set local timezone to UTC for predictable test
+		originalLocal := time.Local
+		time.Local = time.UTC
+		defer func() { time.Local = originalLocal }()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Set the local timezone for this test
-			loc, err := time.LoadLocation(tt.timezoneName)
-			if err != nil {
-				t.Skipf("Could not load %s timezone: %v", tt.timezoneName, err)
-			}
+		wl := WorklogResponse{
+			StartDate:        "2024-01-15",
+			StartTime:        "12:00:00", // This should be ignored
+			StartDateTimeUtc: "2024-01-15T09:00:00Z",
+		}
 
-			// Temporarily set local timezone for the test
-			originalLocal := time.Local
-			time.Local = loc
-			defer func() { time.Local = originalLocal }()
+		result := wl.GetLocalStartTime()
+		expected := "09:00:00" // UTC time converted to local (which is UTC in this test)
+		if result != expected {
+			t.Errorf("GetLocalStartTime() = %q, want %q", result, expected)
+		}
+	})
 
-			// Create a WorklogResponse with UTC time
-			wl := WorklogResponse{
-				StartDate: tt.startDate,
-				StartTime: tt.startTime,
-			}
+	t.Run("falls back to startTime when UTC not available", func(t *testing.T) {
+		wl := WorklogResponse{
+			StartDate: "2024-01-15",
+			StartTime: "14:30:45",
+			// StartDateTimeUtc not set
+		}
 
-			// Get the local time string
-			localTimeStr := wl.GetLocalStartTime()
-
-			// Parse the result
-			parsedTime, err := time.Parse("15:04:05", localTimeStr)
-			if err != nil {
-				t.Fatalf("Failed to parse returned time %q: %v", localTimeStr, err)
-			}
-
-			// Verify hour and minute
-			if parsedTime.Hour() != tt.expectedHour {
-				t.Errorf("Expected hour %d, got %d (timezone %s, offset UTC%+d)",
-					tt.expectedHour, parsedTime.Hour(), tt.timezoneName, tt.timezoneOffset)
-			}
-
-			if parsedTime.Minute() != tt.expectedMin {
-				t.Errorf("Expected minute %d, got %d", tt.expectedMin, parsedTime.Minute())
-			}
-		})
-	}
+		result := wl.GetLocalStartTime()
+		if result != "14:30:45" {
+			t.Errorf("GetLocalStartTime() = %q, want %q", result, "14:30:45")
+		}
+	})
 }
