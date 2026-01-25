@@ -1,0 +1,93 @@
+## Problem
+The current storage initialization in `NewStorage()` does not properly handle paths containing `~` for the user's home directory, does not check if the parent directory exists before creating the database file, and fails to provide user-friendly error messages on failures.
+
+**Current Implementation** ([internal/storage/storage.go#L34-L53](https://github.com/Binsabbar/tasklog/blob/49fc79ed48355b154ece9d9d452fc14ba3d3c402/internal/storage/storage.go#L34-L53)):
+```go
+func NewStorage(dbPath string) (*Storage, error) {
+	log.Debug().Str("path", dbPath).Msg("Opening database")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+	// ...
+}
+```
+
+**Issues:**
+1. No tilde (`~`) expansion - Go does not expand `~` automatically
+2. No directory existence check - if parent directory doesn't exist, SQLite fails
+3. Generic error messages - not actionable for end users
+
+**Affected code locations:**
+- [cmd/sync.go#L32](https://github.com/Binsabbar/tasklog/blob/49fc79ed48355b154ece9d9d452fc14ba3d3c402/cmd/sync.go#L32)
+- [cmd/log.go#L94](https://github.com/Binsabbar/tasklog/blob/49fc79ed48355b154ece9d9d452fc14ba3d3c402/cmd/log.go#L94)
+- [cmd/summary.go#L36](https://github.com/Binsabbar/tasklog/blob/49fc79ed48355b154ece9d9d452fc14ba3d3c402/cmd/summary.go#L36)
+
+## Expected Behavior
+- Storage initialization should expand `~` to the user's home directory using Go standard library
+- Implementation should ensure parent directory exists before opening database
+- Error messages should be clear and actionable for end users
+
+## Suggested Solution
+
+### 1. Add Path Expansion Helper
+```go
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+// ExpandPath expands a path that may begin with '~' to the user's home directory.
+func ExpandPath(path string) (string, error) {
+	if strings.HasPrefix(path, "~") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", errors.New("could not determine home directory: " + err.Error())
+		}
+		return filepath.Join(home, path[1:]), nil
+	}
+	return path, nil
+}
+```
+
+### 2. Add Directory Creation Helper
+```go
+func ensureDirForFile(path string) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("could not create directory %s: %w", dir, err)
+	}
+	return nil
+}
+```
+
+### 3. Update NewStorage or Call Sites
+```go
+// Before calling storage.NewStorage:
+dbPath, err := ExpandPath(cfg.Database.Path)
+if err != nil {
+	return fmt.Errorf("invalid storage path: %w", err)
+}
+
+if err := ensureDirForFile(dbPath); err != nil {
+	return fmt.Errorf("could not create storage directory: %w", err)
+}
+
+store, err := storage.NewStorage(dbPath)
+if err != nil {
+	return fmt.Errorf("failed to initialize storage: %w", err)
+}
+```
+
+## References
+- [os.UserHomeDir documentation](https://pkg.go.dev/os#UserHomeDir)
+- [os.MkdirAll documentation](https://pkg.go.dev/os#MkdirAll)
+- [filepath.Join documentation](https://pkg.go.dev/path/filepath#Join)
+- [Go Error Handling Best Practices](https://go.dev/blog/error-handling-and-go)
+
+## Similar Pattern in Codebase
+The config package already implements similar logic in `EnsureConfigDir()` that can serve as a template.
+
+labels: bug
