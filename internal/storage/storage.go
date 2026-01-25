@@ -113,7 +113,7 @@ func (s *Storage) initSchema() error {
 // getSchemaVersion returns the current schema version
 func (s *Storage) getSchemaVersion() (int, error) {
 	var version int
-	err := s.db.QueryRow("SELECT version FROM schema_version LIMIT 1").Scan(&version)
+	err := s.db.QueryRow("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1").Scan(&version)
 	if err == sql.ErrNoRows {
 		// No version set, check if time_entries table exists
 		var tableName string
