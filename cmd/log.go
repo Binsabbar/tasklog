@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -124,6 +125,8 @@ func runLog(cmd *cobra.Command, args []string) error {
 
 	// Get task
 	if taskKey != "" {
+		// CLI mode: fail fast, no retry
+		// User explicitly provided a task key via flag, so if it's wrong they should fix the command
 		log.Debug().Str("task", taskKey).Msg("Fetching specified task")
 		issue, err := jiraClient.GetIssue(taskKey)
 		if err != nil {
@@ -144,24 +147,41 @@ func runLog(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to select task: %w", err)
 		}
 
-		// If user chose to search, perform the search
+		// If user chose to search, perform the search with retry
 		if selectedIssue.Fields.Summary == "" {
-			searchResults, err := jiraClient.SearchIssues(selectedIssue.Key)
-			if err != nil {
-				return fmt.Errorf("failed to search tasks: %w", err)
-			}
+			for {
+				searchResults, err := jiraClient.SearchIssues(selectedIssue.Key)
+				if err != nil {
+					return fmt.Errorf("failed to search tasks: %w", err)
+				}
 
-			selectedIssue, err = ui.SelectFromSearchResults(searchResults)
-			if err != nil {
-				return fmt.Errorf("failed to select from search results: %w", err)
+				// Check if search returned results
+				if len(searchResults) == 0 {
+					fmt.Printf("No tasks found for '%s'\n", selectedIssue.Key)
+					fmt.Println("(Press Ctrl+C to cancel)")
+
+					// Prompt to search again
+					newIssue, err := ui.PromptTaskSearch()
+					if err != nil {
+						return fmt.Errorf("failed to get search key: %w", err)
+					}
+					selectedIssue = newIssue
+					continue
+				}
+
+				// Results found, let user select
+				selectedIssue, err = ui.SelectFromSearchResults(searchResults)
+				if err != nil {
+					return fmt.Errorf("failed to select from search results: %w", err)
+				}
+				break
 			}
 
 			// Fetch full issue details
-			issue, err := jiraClient.GetIssue(selectedIssue.Key)
+			selectedIssue, err = fetchTaskWithRetry(jiraClient, selectedIssue.Key)
 			if err != nil {
-				return fmt.Errorf("failed to fetch task details: %w", err)
+				return err
 			}
-			selectedIssue = issue
 		}
 	}
 
@@ -295,6 +315,48 @@ func runLog(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// fetchTaskWithRetry attempts to fetch a task, retrying on "not found" errors.
+// It distinguishes between "task not found" errors (which trigger retry) and
+// other API errors like network failures or authentication issues (which exit immediately).
+func fetchTaskWithRetry(jiraClient *jira.Client, initialTaskKey string) (*jira.Issue, error) {
+	currentTaskKey := initialTaskKey
+
+	for {
+		issue, err := jiraClient.GetIssue(currentTaskKey)
+		if err == nil {
+			return issue, nil
+		}
+
+		// Check if it's a "not found" error (404) vs other API errors
+		// If it's a network/auth error, don't retry
+		if !isTaskNotFoundError(err) {
+			return nil, fmt.Errorf("failed to fetch task %s: %w", currentTaskKey, err)
+		}
+
+		// Task not found - prompt to try again
+		fmt.Printf("Error: Task %s not found\n", currentTaskKey)
+		fmt.Println("(Press Ctrl+C to cancel)")
+
+		newIssue, err := ui.PromptManualTaskKey()
+		if err != nil {
+			return nil, err // User cancelled with Ctrl+C
+		}
+		currentTaskKey = newIssue.Key
+	}
+}
+
+// isTaskNotFoundError checks if the error is a 404 not found error.
+// Returns true for "task not found" errors that should trigger retry,
+// false for other errors (network, auth, etc.) that should exit immediately.
+func isTaskNotFoundError(err error) bool {
+	// Check error message for common "not found" patterns
+	// The Jira client returns errors in format: "API request failed with status 404: ..."
+	errMsg := strings.ToLower(err.Error())
+	return strings.Contains(errMsg, "404") ||
+		strings.Contains(errMsg, "not found") ||
+		strings.Contains(errMsg, "does not exist")
 }
 
 func showTodaySummary(store *storage.Storage, jiraClient *jira.Client, tempoClient *tempo.Client, cfg *config.Config) error {
