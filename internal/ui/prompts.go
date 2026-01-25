@@ -134,19 +134,32 @@ func SelectFromSearchResults(issues []jira.Issue) (*jira.Issue, error) {
 	return nil, fmt.Errorf("task not found")
 }
 
-// PromptTimeSpent prompts the user for time spent
-func PromptTimeSpent() (string, error) {
-	var timeSpent string
-	prompt := &survey.Input{
-		Message: "Enter time spent (e.g., 2h 30m, 2.5h, 150m):",
-		Help:    "Formats: 2h 30m, 2.5h, 150m (will be rounded to nearest 5 minutes)",
-	}
+// PromptTimeSpent prompts the user for time spent.
+// Retries on invalid input until valid time is entered or user cancels with Ctrl+C.
+// Returns the time in seconds.
+func PromptTimeSpent() (int, error) {
+	fmt.Println("(Press Ctrl+C to cancel)")
 
-	if err := survey.AskOne(prompt, &timeSpent, survey.WithValidator(survey.Required)); err != nil {
-		return "", err
-	}
+	for {
+		var timeSpent string
+		prompt := &survey.Input{
+			Message: "Enter time spent (e.g., 2h 30m, 2.5h, 150m):",
+			Help:    "Formats: 2h 30m, 2.5h, 150m (will be rounded to nearest 5 minutes)",
+		}
 
-	return timeSpent, nil
+		if err := survey.AskOne(prompt, &timeSpent, survey.WithValidator(survey.Required)); err != nil {
+			return 0, err
+		}
+
+		// Try to parse the time
+		timeSeconds, err := timeparse.Parse(timeSpent)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			continue
+		}
+
+		return timeSeconds, nil
+	}
 }
 
 // PromptComment prompts the user for a required comment/description
@@ -180,6 +193,7 @@ func Confirm(message string) (bool, error) {
 
 // PromptStartTime prompts user for when they worked (optional).
 // Returns time.Now() minus the time spent if user wants current time.
+// Retries on invalid input until valid time is entered or user cancels with Ctrl+C.
 func PromptStartTime(timeSpentSeconds int) (time.Time, error) {
 	useNow, err := Confirm("Log for current time?")
 	if err != nil {
@@ -190,24 +204,26 @@ func PromptStartTime(timeSpentSeconds int) (time.Time, error) {
 		return time.Now().Add(-time.Duration(timeSpentSeconds) * time.Second), nil
 	}
 
-	var whenStr string
-	prompt := &survey.Input{
-		Message: "When did you work on this?",
-		Help:    "Examples: 2pm, yesterday 3pm, 2 hours ago, 14:30",
+	fmt.Println("(Press Ctrl+C to cancel)")
+
+	for {
+		var whenStr string
+		prompt := &survey.Input{
+			Message: "When did you work on this?",
+			Help:    "Examples: 2pm, yesterday 3pm, 2 hours ago, 14:30",
+		}
+
+		if err := survey.AskOne(prompt, &whenStr, survey.WithValidator(survey.Required)); err != nil {
+			return time.Time{}, err
+		}
+
+		// Try to parse the datetime
+		result, err := timeparse.ParseDateTime(whenStr)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			continue
+		}
+
+		return result, nil
 	}
-
-	if err := survey.AskOne(prompt, &whenStr, survey.WithValidator(survey.Required)); err != nil {
-		return time.Time{}, err
-	}
-
-	// We need to import timeparse, but can't introduce import cycle if UI is imported by timeparse.
-	// However, looking at imports, cmd imports ui and timeparse. ui doesn't import timeparse.
-	// Oh wait, PromptStartTime needs to call timeparse.ParseDateTime.
-	// Check imports in internal/ui/prompts.go.
-	// It imports "tasklog/internal/jira".
-	// Make sure timeparse is not importing ui.
-	// internal/timeparse/datetime.go imports "github.com/olebedev/when" etc. No internal imports.
-
-	// So we can import timeparse here.
-	return timeparse.ParseDateTime(whenStr)
 }

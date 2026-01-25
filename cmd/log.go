@@ -172,14 +172,9 @@ func runLog(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("invalid time format: %w", err)
 		}
 	} else {
-		timeStr, err := ui.PromptTimeSpent()
+		timeSeconds, err = ui.PromptTimeSpent()
 		if err != nil {
 			return fmt.Errorf("failed to get time spent: %w", err)
-		}
-
-		timeSeconds, err = timeparse.Parse(timeStr)
-		if err != nil {
-			return fmt.Errorf("invalid time format: %w", err)
 		}
 	}
 
