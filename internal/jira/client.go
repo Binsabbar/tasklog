@@ -188,9 +188,11 @@ func (c *Client) AddWorklog(issueKey string, timeSpentSeconds int, started time.
 
 	endpoint := fmt.Sprintf("%s/rest/api/3/issue/%s/worklog", c.baseURL, issueKey)
 
-	// Format started time in Jira format with timezone offset
+	// Convert to UTC and format with +0000 offset for Jira API
 	// Jira expects format: yyyy-MM-dd'T'HH:mm:ss.SSSZ (e.g., 2024-11-11T10:00:00.000+0000)
-	startedStr := started.Format("2006-01-02T15:04:05.000-0700")
+	// Using UTC ensures consistent timezone handling between Jira and Tempo
+	startedUTC := started.UTC()
+	startedStr := startedUTC.Format("2006-01-02T15:04:05.000+0000")
 
 	payload := map[string]interface{}{
 		"timeSpentSeconds": timeSpentSeconds,
