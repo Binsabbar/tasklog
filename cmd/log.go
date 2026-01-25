@@ -82,10 +82,10 @@ func runLog(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check if first argument is a shortcut name
-	var shortcut *config.ShortcutEntry = nil
+	var shortcut *config.ShortcutEntry
 	if len(args) > 0 {
 		shortcutName = args[0]
-		found := true
+		var found bool
 		shortcut, found = cfg.GetShortcut(shortcutName)
 		if !found {
 			return fmt.Errorf("shortcut '%s' not found in configuration", shortcutName)
