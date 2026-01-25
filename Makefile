@@ -1,4 +1,4 @@
-.PHONY: help build test lint fmt clean docker-build up-deps-services up-app up-all down-app down-volume down logs setup release release-snapshot go-build go-test go-test-coverage go-lint go-vulncheck go-fmt go-fmt-check docker-up-deps-services docker-up-app docker-up-all docker-status docker-down-app docker-down docker-down-volume docker-deps-logs docker-app-logs
+.PHONY: help build test lint fmt clean docker-build up-deps-services up-app up-all down-app down-volume down logs setup release release-snapshot go-build go-build-release go-test go-test-coverage go-lint go-vulncheck go-fmt go-fmt-check docker-up-deps-services docker-up-app docker-up-all docker-status docker-down-app docker-down docker-down-volume docker-deps-logs docker-app-logs
 
 # Variables
 BINARY_NAME=tasklog
@@ -10,6 +10,12 @@ MAIN_PATH=./main.go
 DOCKER_REGISTRY ?= ghcr.io
 DOCKER_IMAGE_NAME ?= binsabbar/tasklog
 VERSION ?= latest
+
+# Build variables (for go-build-release)
+BUILD_VERSION ?= dev
+BUILD_COMMIT ?= $(shell git rev-parse --short HEAD)
+BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+BUILD_BY ?= manual
 
 export GITHUB_REPOSITORY_OWNER ?= binsabbar
 
@@ -26,6 +32,7 @@ help:
 	@echo ""
 	@echo "$(YELLOW)Development:$(NC)"
 	@echo "  make go-build              - Build the binary to bin/$(BINARY_NAME)"
+	@echo "  make go-build-release      - Build with version info (mimics GoReleaser)"
 	@echo "  make go-test               - Run all tests (silent mode)"
 	@echo "  make go-test-verbose       - Run all tests with verbose output"
 	@echo "  make go-test-coverage      - Run all tests with race detector and coverage"
@@ -48,11 +55,16 @@ help:
 	@echo ""
 	@echo "$(YELLOW)Examples:$(NC)"
 	@echo "  make docker-build VERSION=v1.0.0"
+	@echo "  make go-build-release BUILD_VERSION=1.1.0-alpha.1"
 	@echo "  make release-snapshot"
 	@echo "  git tag v0.1.0 && make release"
 	@echo ""
 	@echo "$(YELLOW)Variables:$(NC)"
 	@echo "  VERSION                - Version tag for Docker image (default: latest)"
+	@echo "  BUILD_VERSION          - Version for go-build-release (default: dev)"
+	@echo "  BUILD_COMMIT           - Git commit for build (default: current short SHA)"
+	@echo "  BUILD_DATE             - Build date (default: current UTC time)"
+	@echo "  BUILD_BY               - Builder name (default: manual)"
 	@echo "  DOCKER_REGISTRY        - Docker registry URL (default: ghcr.io)"
 	@echo "  DOCKER_IMAGE_NAME      - Docker image name (default: binsabbar/tasklog)"
 	@echo "  GITHUB_REPOSITORY_OWNER - GitHub owner for release (default: binsabbar)"
@@ -62,6 +74,19 @@ go-build:
 	@echo "$(BLUE)Building $(BINARY_NAME)...$(NC)"
 	@go build -o bin/$(BINARY_NAME) $(MAIN_PATH)
 	@echo "$(GREEN)✓ Build complete: bin/$(BINARY_NAME)$(NC)"
+
+## build-release: Build with version info (mimics GoReleaser)
+go-build-release:
+	@echo "$(BLUE)Building $(BINARY_NAME) with version info...$(NC)"
+	@mkdir -p dist
+	@go build \
+		-ldflags="-X main.version=$(BUILD_VERSION) -X main.commit=$(BUILD_COMMIT) -X main.date=$(BUILD_DATE) -X main.builtBy=$(BUILD_BY)" \
+		-o dist/$(BINARY_NAME) $(MAIN_PATH)
+	@echo "$(GREEN)✓ Build complete: dist/$(BINARY_NAME)$(NC)"
+	@echo "$(YELLOW)Version: $(BUILD_VERSION)$(NC)"
+	@echo "$(YELLOW)Commit:  $(BUILD_COMMIT)$(NC)"
+	@echo "$(YELLOW)Date:    $(BUILD_DATE)$(NC)"
+	@echo "$(YELLOW)Built by: $(BUILD_BY)$(NC)"
 
 ## test: Run all tests
 ## test: Run tests silently  
