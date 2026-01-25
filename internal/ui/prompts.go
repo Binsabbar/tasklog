@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"tasklog/internal/jira"
@@ -37,10 +38,10 @@ func SelectTask(inProgressIssues []jira.Issue) (*jira.Issue, error) {
 
 	// Check if user selected search or manual entry
 	if selected == "Search for a task" {
-		return promptTaskSearch()
+		return PromptTaskSearch()
 	}
 	if selected == "Enter task key manually" {
-		return promptManualTaskKey()
+		return PromptManualTaskKey()
 	}
 
 	// Find the selected issue
@@ -68,13 +69,13 @@ func selectTaskWithoutInProgress() (*jira.Issue, error) {
 	}
 
 	if selected == "Search for a task" {
-		return promptTaskSearch()
+		return PromptTaskSearch()
 	}
-	return promptManualTaskKey()
+	return PromptManualTaskKey()
 }
 
-// promptTaskSearch prompts the user to search for a task
-func promptTaskSearch() (*jira.Issue, error) {
+// PromptTaskSearch prompts the user to search for a task
+func PromptTaskSearch() (*jira.Issue, error) {
 	var searchKey string
 	prompt := &survey.Input{
 		Message: "Enter task key to search:",
@@ -88,8 +89,8 @@ func promptTaskSearch() (*jira.Issue, error) {
 	return &jira.Issue{Key: searchKey}, nil
 }
 
-// promptManualTaskKey prompts the user to enter a task key manually
-func promptManualTaskKey() (*jira.Issue, error) {
+// PromptManualTaskKey prompts the user to enter a task key manually
+func PromptManualTaskKey() (*jira.Issue, error) {
 	var taskKey string
 	prompt := &survey.Input{
 		Message: "Enter task key:",
@@ -164,16 +165,38 @@ func PromptTimeSpent() (int, error) {
 
 // PromptComment prompts the user for a required comment/description
 func PromptComment() (string, error) {
+	const minLength = 5
+
 	var comment string
 	prompt := &survey.Input{
 		Message: "Enter a description (required for Tempo):",
 	}
 
-	if err := survey.AskOne(prompt, &comment, survey.WithValidator(survey.Required)); err != nil {
+	// Custom validator that trims whitespace and checks minimum length
+	validator := func(val interface{}) error {
+		str, ok := val.(string)
+		if !ok {
+			return fmt.Errorf("invalid input type")
+		}
+
+		trimmed := strings.TrimSpace(str)
+		if len(trimmed) == 0 {
+			return fmt.Errorf("description cannot be empty or contain only whitespace")
+		}
+
+		if len(trimmed) < minLength {
+			return fmt.Errorf("description must be at least %d characters (currently %d)", minLength, len(trimmed))
+		}
+
+		return nil
+	}
+
+	if err := survey.AskOne(prompt, &comment, survey.WithValidator(validator)); err != nil {
 		return "", err
 	}
 
-	return comment, nil
+	// Trim whitespace from the final comment
+	return strings.TrimSpace(comment), nil
 }
 
 // Confirm asks the user for confirmation
