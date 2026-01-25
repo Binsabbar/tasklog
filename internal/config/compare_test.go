@@ -27,8 +27,6 @@ jira:
 tempo:
   enabled: false
   api_token: ""
-labels:
-  allowed_labels: []
 database:
   path: ""
 slack:

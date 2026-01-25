@@ -167,9 +167,10 @@ jira:
     - name: "daily"
       task: "PROJ-123"
       time: "30m"
+      comment: code review
     
     - name: "standup"
-      task: "PROJ-123"
+      task: "PROJ-124"
       time: "15m"
     
     - name: "code-review"
@@ -410,7 +411,7 @@ Skip interactive prompts by providing values via flags:
 tasklog log --task PROJ-123 --time 2.5h
 
 # Short form
-tasklog log -t PROJ-123 -d 2h30m
+tasklog log -t PROJ-123 -d 2h30m -m "code review"
 ```
 
 ### View Summary

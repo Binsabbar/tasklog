@@ -43,7 +43,7 @@ func init() {
 
 	logCmd.Flags().StringVarP(&taskKey, "task", "t", "", "Task key (e.g., PROJ-123)")
 	logCmd.Flags().StringVarP(&timeSpent, "time", "d", "", "Time spent (e.g., 2h 30m, 2.5h, 150m)")
-	logCmd.Flags().StringVarP(&commentFlag, "comment", "c", "", "Description/comment for the time entry")
+	logCmd.Flags().StringVarP(&commentFlag, "message", "m", "", "Description/comment for the time entry")
 	logCmd.Flags().StringVarP(&startedAt, "at", "a", "", "When work was performed (e.g., 2pm, yesterday, 2h ago)")
 
 	// Set custom usage template to show available shortcuts
