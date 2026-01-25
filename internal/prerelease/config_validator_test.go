@@ -42,6 +42,54 @@ jira:
   project_key: PROJ`,
 			expectNoIssue: true,
 		},
+		{
+			name: "detects deprecated labels section",
+			config: `version: 1
+jira:
+  url: https://example.com
+labels:
+  allowed:
+    - daily
+    - meeting`,
+			expectIssues: 1,
+			expectFields: []string{"labels"},
+		},
+		{
+			name: "detects root-level shortcuts",
+			config: `version: 1
+jira:
+  url: https://example.com
+shortcuts:
+  - name: daily
+    task: PROJ-123`,
+			expectIssues: 1,
+			expectFields: []string{"shortcuts"},
+		},
+		{
+			name: "detects root-level breaks",
+			config: `version: 1
+jira:
+  url: https://example.com
+breaks:
+  - name: lunch
+    duration: 60`,
+			expectIssues: 1,
+			expectFields: []string{"breaks"},
+		},
+		{
+			name: "no issues with properly nested shortcuts and breaks",
+			config: `version: 1
+jira:
+  url: https://example.com
+  shortcuts:
+    - name: daily
+      task: PROJ-123
+slack:
+  breaks:
+    - name: lunch
+      duration: 60`,
+			expectNoIssue: true,
+		},
 	}
 
 	for _, tt := range tests {

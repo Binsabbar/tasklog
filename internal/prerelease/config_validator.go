@@ -56,6 +56,15 @@ var KnownIssues = []KnownIssue{
 		LogicFlip:  false,
 		Suggestion: "Move 'breaks' array from root level to under 'slack:' section (slack.breaks)",
 	},
+	{
+		Field:      "labels",
+		OldName:    "labels",
+		NewName:    "",
+		Severity:   "high",
+		Release:    "v1.1.0-alpha.1",
+		LogicFlip:  false,
+		Suggestion: "Remove the 'labels' section from your config - labels have been removed. Comments/descriptions are now required when logging time.",
+	},
 }
 
 // ValidateConfig checks a config file for known pre-release breaking changes
