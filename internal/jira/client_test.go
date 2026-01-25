@@ -293,3 +293,100 @@ func TestGetInProgressIssues_SingleCustomStatus(t *testing.T) {
 		t.Errorf("expected issue key TEST-789, got %s", issues[0].Key)
 	}
 }
+
+func TestAddWorklog_DateFormat(t *testing.T) {
+	var capturedPayload map[string]interface{}
+
+	// Create mock server that captures the request payload
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/api/3/issue/TEST-123/worklog" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != "POST" {
+			t.Errorf("expected POST request, got %s", r.Method)
+		}
+
+		// Capture the request payload
+		if err := json.NewDecoder(r.Body).Decode(&capturedPayload); err != nil {
+			t.Fatalf("failed to decode request body: %v", err)
+		}
+
+		// Return mock response
+		response := Worklog{
+			ID:               "12345",
+			TimeSpent:        "1h",
+			TimeSpentSeconds: 3600,
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "user@example.com", "token", "TEST")
+
+	// Use a specific time for testing
+	testTime := time.Date(2024, 11, 15, 14, 30, 0, 0, time.FixedZone("GST", 4*60*60)) // +0400
+
+	_, err := client.AddWorklog("TEST-123", 3600, testTime, "Test comment")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify the started field format
+	started, ok := capturedPayload["started"].(string)
+	if !ok {
+		t.Fatal("started field not found in request")
+	}
+
+	// Jira expects format: yyyy-MM-dd'T'HH:mm:ss.SSSZ (e.g., 2024-11-15T14:30:00.000+0400)
+	// The format must include timezone offset, not literal 'Z'
+	expectedFormat := "2024-11-15T14:30:00.000+0400"
+	if started != expectedFormat {
+		t.Errorf("expected started format:\n%s\ngot:\n%s", expectedFormat, started)
+	}
+
+	// Verify timeSpentSeconds
+	timeSpent, ok := capturedPayload["timeSpentSeconds"].(float64)
+	if !ok {
+		t.Fatal("timeSpentSeconds field not found in request")
+	}
+	if int(timeSpent) != 3600 {
+		t.Errorf("expected timeSpentSeconds 3600, got %v", timeSpent)
+	}
+}
+
+func TestAddWorklog_DateFormat_UTC(t *testing.T) {
+	var capturedPayload map[string]interface{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&capturedPayload); err != nil {
+			t.Fatalf("failed to decode request body: %v", err)
+		}
+
+		response := Worklog{ID: "12345", TimeSpentSeconds: 3600}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "user@example.com", "token", "TEST")
+
+	// Test with UTC time
+	testTime := time.Date(2024, 11, 15, 10, 0, 0, 0, time.UTC)
+
+	_, err := client.AddWorklog("TEST-123", 3600, testTime, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	started, ok := capturedPayload["started"].(string)
+	if !ok {
+		t.Fatal("started field not found in request")
+	}
+
+	// UTC should produce +0000 offset, not literal 'Z'
+	expectedFormat := "2024-11-15T10:00:00.000+0000"
+	if started != expectedFormat {
+		t.Errorf("expected started format:\n%s\ngot:\n%s", expectedFormat, started)
+	}
+}
