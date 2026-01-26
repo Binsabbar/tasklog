@@ -1,3 +1,0 @@
-kind: fixed
-body: "Fix timezone mismatch when logging time entries to Tempo - times are now correctly converted to UTC before sending to Tempo API."
-time: 2026-01-15T15:50:52Z
