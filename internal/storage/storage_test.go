@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -15,6 +17,95 @@ func TestNewStorage(t *testing.T) {
 
 	if store.db == nil {
 		t.Error("database connection is nil")
+	}
+}
+
+// TestNewStorage_WithTildePath tests database creation with tilde in path
+func TestNewStorage_WithTildePath(t *testing.T) {
+	// Save original HOME environment variable
+	originalHome := os.Getenv("HOME")
+
+	// Create a temporary directory to use as fake home
+	tmpHome := t.TempDir()
+
+	// Set HOME to temporary directory for this test
+	// This is safe because:
+	// 1. t.Setenv automatically restores the original value after the test
+	// 2. Each test runs in isolation
+	// 3. No security risk - we're just testing path expansion logic
+	t.Setenv("HOME", tmpHome)
+
+	// Verify HOME was set correctly
+	if os.Getenv("HOME") != tmpHome {
+		t.Fatal("failed to set HOME environment variable")
+	}
+
+	// Use tilde path - should expand to tmpHome
+	dbPath := "~/.tasklog/test.db"
+	expectedPath := filepath.Join(tmpHome, ".tasklog", "test.db")
+
+	store, err := NewStorage(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create storage with tilde path: %v", err)
+	}
+	defer store.Close()
+
+	// Verify database file was created at the expanded path
+	if _, err := os.Stat(expectedPath); os.IsNotExist(err) {
+		t.Errorf("database file was not created at expected path: %s", expectedPath)
+	}
+
+	// Verify HOME is restored after test (t.Setenv handles this automatically)
+	// This is just for demonstration - the cleanup happens in t.Cleanup()
+	t.Cleanup(func() {
+		if os.Getenv("HOME") != originalHome {
+			t.Logf("Note: HOME will be restored to %s after test", originalHome)
+		}
+	})
+}
+
+// TestNewStorage_WithNestedPath tests database creation in nested non-existent directory
+func TestNewStorage_WithNestedPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "level1", "level2", "level3", "test.db")
+
+	store, err := NewStorage(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create storage with nested path: %v", err)
+	}
+	defer store.Close()
+
+	// Verify all directories were created
+	if _, err := os.Stat(filepath.Dir(dbPath)); os.IsNotExist(err) {
+		t.Error("parent directories were not created")
+	}
+
+	// Verify database file was created
+	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+		t.Error("database file was not created")
+	}
+}
+
+// TestNewStorage_WithExistingDirectory tests that existing directories work correctly
+func TestNewStorage_WithExistingDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Pre-create the directory
+	dbDir := filepath.Join(tmpDir, "existing")
+	if err := os.MkdirAll(dbDir, 0700); err != nil {
+		t.Fatalf("failed to create test directory: %v", err)
+	}
+
+	dbPath := filepath.Join(dbDir, "test.db")
+	store, err := NewStorage(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create storage in existing directory: %v", err)
+	}
+	defer store.Close()
+
+	// Verify database file was created
+	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+		t.Error("database file was not created")
 	}
 }
 

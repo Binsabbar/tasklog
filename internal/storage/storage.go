@@ -34,7 +34,20 @@ type TimeEntry struct {
 func NewStorage(dbPath string) (*Storage, error) {
 	log.Debug().Str("path", dbPath).Msg("Opening database")
 
-	db, err := sql.Open("sqlite", dbPath)
+	// Expand tilde in path
+	expandedPath, err := expandPath(dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("invalid storage path: %w", err)
+	}
+
+	// Ensure parent directory exists (skip for special paths like :memory:)
+	if expandedPath != ":memory:" {
+		if err := ensureDirForFile(expandedPath); err != nil {
+			return nil, fmt.Errorf("could not create storage directory: %w", err)
+		}
+	}
+
+	db, err := sql.Open("sqlite", expandedPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
