@@ -53,3 +53,26 @@ func (v *Version) Equals(other *Version) bool {
 func (v *Version) Prerelease() string {
 	return v.version.Prerelease()
 }
+
+// Segments returns the version segments [major, minor, patch]
+func (v *Version) Segments() []int {
+	return v.version.Segments()
+}
+
+// Major returns the major version number
+func (v *Version) Major() int {
+	segments := v.Segments()
+	if len(segments) > 0 {
+		return segments[0]
+	}
+	return 0
+}
+
+// Minor returns the minor version number
+func (v *Version) Minor() int {
+	segments := v.Segments()
+	if len(segments) > 1 {
+		return segments[1]
+	}
+	return 0
+}

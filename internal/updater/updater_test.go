@@ -1,6 +1,8 @@
 package updater
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -341,7 +343,7 @@ func TestCheckForUpdate_DevBuild(t *testing.T) {
 
 	// Test with an invalid/unparseable version (like "dev")
 	// The code should parse it, fail, log, and return notification with Available=false
-	notification, err := updater.CheckForUpdate("dev", "")
+	notification, err := updater.CheckForUpdate(context.Background(), "dev", "")
 
 	// Dev builds should return non-nil notification with Available=false
 	if err != nil {
@@ -367,7 +369,7 @@ func TestCheckForUpdate_CacheExpiry(t *testing.T) {
 	updater.saveUpdateCache(cache)
 
 	// First call with cache should skip check and return cached result
-	notification, err := updater.CheckForUpdate("v1.0.0", "")
+	notification, err := updater.CheckForUpdate(context.Background(), "v1.0.0", "")
 
 	// We expect non-nil notification with Available=false from cache
 	if notification == nil {
@@ -450,7 +452,7 @@ func TestPerformUpgrade_UserCancellation(t *testing.T) {
 		return false
 	}
 
-	backupPath, err := updater.PerformUpgrade(updateInfo, confirmNo)
+	backupPath, err := updater.PerformUpgrade(context.Background(), updateInfo, confirmNo)
 	if err == nil {
 		t.Error("expected error when user cancels")
 	}
@@ -526,7 +528,7 @@ func TestGetUpdateInfo_AssetSelection(t *testing.T) {
 	defer server.Close()
 	updater.githubClient.SetBaseURL(server.URL)
 
-	info, err := updater.GetUpdateInfo("v1.0.0", "")
+	info, err := updater.GetUpdateInfo(context.Background(), "v1.0.0", "")
 	if err != nil {
 		t.Fatalf("GetUpdateInfo failed: %v", err)
 	}
@@ -583,7 +585,7 @@ func TestDownloadAndReplace_PermissionError(t *testing.T) {
 
 	// This will fail because we're not testing with the actual executable
 	// But it verifies the function exists and handles errors
-	_, err := updater.downloadAndReplace("http://invalid", "")
+	_, err := updater.downloadAndReplace(context.Background(), "http://invalid", "")
 	if err == nil {
 		t.Error("expected error for invalid download")
 	}
@@ -610,7 +612,7 @@ func TestVerifyChecksum(t *testing.T) {
 	}
 
 	// Verify checksum (should fail because checksums don't match)
-	err := updater.verifyChecksum(testFile, server.URL)
+	err := updater.verifyChecksum(context.Background(), testFile, server.URL)
 	if err == nil {
 		t.Error("expected checksum verification to fail")
 	}
@@ -630,7 +632,7 @@ func TestVerifyChecksum_DownloadError(t *testing.T) {
 	}
 
 	// Try to verify with invalid URL
-	err := updater.verifyChecksum(testFile, "http://invalid-url-that-does-not-exist")
+	err := updater.verifyChecksum(context.Background(), testFile, "http://invalid-url-that-does-not-exist")
 	if err == nil {
 		t.Error("expected error for invalid checksum URL")
 	}
@@ -653,5 +655,170 @@ func TestFailingWriter(t *testing.T) {
 	// This verifies we can create failing writers for testing
 	if err == nil {
 		t.Error("expected error from failing writer")
+	}
+}
+
+func TestGetBestAvailableUpdate(t *testing.T) {
+	tmpDir := t.TempDir()
+	updater := NewUpdater("owner", "repo", tmpDir, "24h")
+
+	// Set up mock server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Return multiple releases
+		// Note: GitHub API typically returns newest first, but our code should handle any order
+		releases := []github.Release{
+			{
+				TagName:    "v1.2.0",
+				Prerelease: false,
+				Assets: []github.Asset{
+					{
+						Name:               fmt.Sprintf("tasklog_1.2.0_%s_%s", runtime.GOOS, runtime.GOARCH),
+						BrowserDownloadURL: "http://example.com/v1.2.0",
+					},
+				},
+			},
+			{
+				TagName:    "v1.1.0",
+				Prerelease: false,
+				Assets: []github.Asset{
+					{
+						Name:               fmt.Sprintf("tasklog_1.1.0_%s_%s", runtime.GOOS, runtime.GOARCH),
+						BrowserDownloadURL: "http://example.com/v1.1.0",
+					},
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(releases)
+	}))
+	defer server.Close()
+	updater.githubClient.SetBaseURL(server.URL)
+
+	// Test with v1.0.0 - should get v1.2.0 (newest stable)
+	info, err := updater.GetBestAvailableUpdate(context.Background(), "v1.0.0")
+	if err != nil {
+		t.Fatalf("GetBestAvailableUpdate failed: %v", err)
+	}
+	if info == nil {
+		t.Fatal("expected update info, got nil")
+	}
+	if info.LatestVersion != "1.2.0" {
+		t.Errorf("expected version 1.2.0, got %s", info.LatestVersion)
+	}
+
+	// Test with v1.3.0 - should get ErrNoUpdateAvailable
+	_, err = updater.GetBestAvailableUpdate(context.Background(), "v1.3.0")
+	if err != ErrNoUpdateAvailable {
+		t.Errorf("expected ErrNoUpdateAvailable, got %v", err)
+	}
+
+	// Test with dev build - dev gets converted to 0.0.0-dev, so should find update
+	info, err = updater.GetBestAvailableUpdate(context.Background(), "dev")
+	if err != nil {
+		t.Fatalf("GetBestAvailableUpdate for dev failed: %v", err)
+	}
+	if info == nil {
+		t.Fatal("expected update info for dev build, got nil")
+	}
+	if info.CurrentVersion != "0.0.0-dev" {
+		t.Errorf("expected current version 0.0.0-dev, got %s", info.CurrentVersion)
+	}
+	if info.LatestVersion != "1.2.0" {
+		t.Errorf("expected latest version 1.2.0, got %s", info.LatestVersion)
+	}
+
+	// Test with invalid version - should get ErrDevBuild
+	_, err = updater.GetBestAvailableUpdate(context.Background(), "invalid-version-string-!!!!")
+	if err == nil {
+		t.Error("expected error for invalid version, got nil")
+	}
+}
+
+func TestGetUpdateInfoForVersion(t *testing.T) {
+	tmpDir := t.TempDir()
+	updater := NewUpdater("owner", "repo", tmpDir, "24h")
+
+	// Set up mock server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Return specific release
+		release := github.Release{
+			TagName:    "v1.5.0",
+			Prerelease: false,
+			Body:       "Release notes for v1.5.0",
+			Assets: []github.Asset{
+				{
+					Name:               fmt.Sprintf("tasklog_1.5.0_%s_%s", runtime.GOOS, runtime.GOARCH),
+					BrowserDownloadURL: "http://example.com/v1.5.0",
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(release)
+	}))
+	defer server.Close()
+	updater.githubClient.SetBaseURL(server.URL)
+
+	// Test fetching specific version
+	info, err := updater.GetUpdateInfoForVersion(context.Background(), "v1.0.0", "v1.5.0")
+	if err != nil {
+		t.Fatalf("GetUpdateInfoForVersion failed: %v", err)
+	}
+	if info == nil {
+		t.Fatal("expected update info, got nil")
+	}
+	if info.LatestVersion != "1.5.0" {
+		t.Errorf("expected version 1.5.0, got %s", info.LatestVersion)
+	}
+	if info.CurrentVersion != "1.0.0" {
+		t.Errorf("expected current version 1.0.0, got %s", info.CurrentVersion)
+	}
+}
+
+func TestListAvailableVersions(t *testing.T) {
+	tmpDir := t.TempDir()
+	updater := NewUpdater("owner", "repo", tmpDir, "24h")
+
+	// Set up mock server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		releases := []github.Release{
+			{TagName: "v1.2.0", Prerelease: false},
+			{TagName: "v1.1.0", Prerelease: false},
+			{TagName: "v1.2.0-alpha.1", Prerelease: true},
+			{TagName: "v1.2.0-beta.1", Prerelease: true},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(releases)
+	}))
+	defer server.Close()
+	updater.githubClient.SetBaseURL(server.URL)
+
+	// Test listing all versions
+	versions, err := updater.ListAvailableVersions(context.Background(), "")
+	if err != nil {
+		t.Fatalf("ListAvailableVersions failed: %v", err)
+	}
+	if len(versions) != 4 {
+		t.Errorf("expected 4 versions, got %d", len(versions))
+	}
+
+	// Test filtering stable only
+	versions, err = updater.ListAvailableVersions(context.Background(), "stable")
+	if err != nil {
+		t.Fatalf("ListAvailableVersions failed: %v", err)
+	}
+	if len(versions) != 2 {
+		t.Errorf("expected 2 stable versions, got %d", len(versions))
+	}
+
+	// Test filtering alpha only
+	versions, err = updater.ListAvailableVersions(context.Background(), "alpha")
+	if err != nil {
+		t.Fatalf("ListAvailableVersions failed: %v", err)
+	}
+	if len(versions) != 1 {
+		t.Errorf("expected 1 alpha version, got %d", len(versions))
+	}
+	if versions[0].Type != "alpha" {
+		t.Errorf("expected type 'alpha', got '%s'", versions[0].Type)
 	}
 }

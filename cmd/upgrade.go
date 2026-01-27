@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"bufio"
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -13,13 +15,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	upgradeChannel     string
+	upgradeListChannel string
+)
+
 var installCmd = &cobra.Command{
-	Use:   "install",
-	Short: "Install/upgrade tasklog to the latest version",
-	Long: `Download and install the latest version of tasklog from GitHub releases.
+	Use:   "install [version]",
+	Short: "Install/upgrade tasklog to the latest or specified version",
+	Long: `Download and install tasklog from GitHub releases.
 
 This command will:
-1. Check for the latest release (respects your update.channel config)
+1. Check for the latest release or fetch the specified version
 2. Download the appropriate binary for your OS/architecture
 3. Create a backup of the current binary
 4. Replace the current binary with the new version
@@ -33,14 +40,21 @@ Safety features:
 - Permission checks before attempting upgrade
 - Automatic rollback on failure
 
-Release channels:
-- If you're on a stable release (e.g., v1.0.0), you'll get stable updates
-- If you're on a pre-release (e.g., v1.0.0-alpha.1), you'll get pre-release updates
-- Configure update.channel in config to override: "", "stable", "alpha", "beta", "rc"
+Usage examples:
+  tasklog upgrade install                    # Upgrade to the best available version
+  tasklog upgrade install v1.2.0             # Upgrade to specific version
+  tasklog upgrade install --channel alpha    # Upgrade to latest alpha
+  tasklog upgrade install --channel stable   # Upgrade to latest stable
+
+Release channel priority:
+- By default, prefers stable releases over pre-releases
+- If you're on a pre-release, shows the best available update
+- Use --channel to explicitly target a channel: stable, alpha, beta, rc
 
 Note: If tasklog is installed in a system directory (e.g., /usr/local/bin),
 you may need to run this command with sudo.` + configHelp,
 	RunE: runUpgrade,
+	Args: cobra.MaximumNArgs(1),
 }
 
 var upgradeCmd = &cobra.Command{
@@ -49,12 +63,26 @@ var upgradeCmd = &cobra.Command{
 	Long:  `Manage tasklog version upgrades.`,
 }
 
+var listCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List available versions",
+	Long: `List all available versions from GitHub releases.
+
+Usage examples:
+  tasklog upgrade list                 # List all versions
+  tasklog upgrade list --channel stable # List only stable releases
+  tasklog upgrade list --channel alpha  # List only alpha releases`,
+	RunE: runListVersions,
+}
+
 var dismissCmd = &cobra.Command{
 	Use:   "dismiss",
-	Short: "Dismiss the current update notification",
-	Long: `Dismiss the current update notification. You will see the notification again
-after the next check interval (default: 24h), or immediately if a newer version
-is released.`,
+	Short: "Dismiss the current update notification for 24 hours",
+	Long: `Dismiss the current update notification for 24 hours.
+
+The notification will reappear after 24 hours, or immediately if a newer version
+is released. This ensures you don't miss important stable releases while allowing
+you to work without distractions.`,
 	Run: func(_ *cobra.Command, _ []string) {
 		// Get config dir for cache
 		configDir, err := config.GetConfigDir()
@@ -79,13 +107,20 @@ is released.`,
 			os.Exit(1)
 		}
 
-		fmt.Println("✓ Update notification dismissed")
-		fmt.Printf("You'll be reminded again in %s, or immediately if a newer version is released.\n", cfg.Update.CheckInterval)
+		fmt.Println("✓ Update notification dismissed for 24 hours")
+		fmt.Println("You'll be reminded tomorrow, or immediately if a newer version is released.")
 	},
 }
 
 func init() {
+	// Add flags to install command
+	installCmd.Flags().StringVar(&upgradeChannel, "channel", "", "Release channel to upgrade to (stable, alpha, beta, rc)")
+
+	// Add flags to list command
+	listCmd.Flags().StringVar(&upgradeListChannel, "channel", "", "Filter by release channel (stable, alpha, beta, rc)")
+
 	upgradeCmd.AddCommand(installCmd)
+	upgradeCmd.AddCommand(listCmd)
 	upgradeCmd.AddCommand(dismissCmd)
 	rootCmd.AddCommand(upgradeCmd)
 }
@@ -95,8 +130,6 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	if !IsOfficialBuild() {
 		return fmt.Errorf("upgrade command is only available for official releases built by goreleaser\nBuild info: version=%s, builtBy=%s", version, builtBy)
 	}
-
-	fmt.Println("🔍 Checking for updates...")
 
 	// Load config
 	cfg, err := config.Load()
@@ -114,19 +147,54 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	// Create updater
 	upd := updater.NewUpdater(githubOwner, githubRepo, configDir, cfg.Update.CheckInterval)
 
-	// Get full update info for upgrade
-	updateInfo, err := upd.GetUpdateInfo(version, cfg.Update.Channel)
-	if err != nil {
-		return fmt.Errorf("failed to check for updates: %w", err)
-	}
+	var updateInfo *updater.UpdateInfo
 
-	if updateInfo == nil {
-		fmt.Printf("✓ You are already running the latest version (%s)\n", version)
-		return nil
+	// Create context for the upgrade operations
+	ctx := context.Background()
+
+	// Check if user specified a version
+	if len(args) > 0 {
+		targetVersion := args[0]
+		fmt.Printf("🔍 Fetching version %s...\n", targetVersion)
+
+		updateInfo, err = upd.GetUpdateInfoForVersion(ctx, version, targetVersion)
+		if err != nil {
+			return fmt.Errorf("failed to fetch version %s: %w", targetVersion, err)
+		}
+	} else if upgradeChannel != "" {
+		// User specified a channel
+		fmt.Printf("🔍 Checking for latest %s release...\n", upgradeChannel)
+
+		updateInfo, err = upd.GetUpdateInfo(ctx, version, upgradeChannel)
+		if err != nil {
+			if errors.Is(err, updater.ErrNoUpdateAvailable) {
+				fmt.Printf("✓ You are already running the latest %s version (%s)\n", upgradeChannel, version)
+				return nil
+			}
+			if errors.Is(err, updater.ErrDevBuild) {
+				return fmt.Errorf("cannot upgrade development build")
+			}
+			return fmt.Errorf("failed to check for updates: %w", err)
+		}
+	} else {
+		// Use best available update (smart channel detection)
+		fmt.Println("🔍 Checking for the best available update...")
+
+		updateInfo, err = upd.GetBestAvailableUpdate(ctx, version)
+		if err != nil {
+			if errors.Is(err, updater.ErrNoUpdateAvailable) {
+				fmt.Printf("✓ You are already running the latest version (%s)\n", version)
+				return nil
+			}
+			if errors.Is(err, updater.ErrDevBuild) {
+				return fmt.Errorf("cannot upgrade development build")
+			}
+			return fmt.Errorf("failed to check for updates: %w", err)
+		}
 	}
 
 	// Perform upgrade (handles user interaction and all upgrade logic)
-	backupPath, err := upd.PerformUpgrade(updateInfo, confirmAction)
+	backupPath, err := upd.PerformUpgrade(ctx, updateInfo, confirmAction)
 	if err != nil {
 		if backupPath != "" {
 			fmt.Printf("\n❌ Upgrade failed: %v\n", err)
@@ -154,6 +222,70 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	if clearErr := upd.ClearUpdateCache(); clearErr != nil {
 		log.Debug().Err(clearErr).Msg("Failed to clear update cache")
 	}
+
+	return nil
+}
+
+func runListVersions(cmd *cobra.Command, args []string) error {
+	// Double-check this is an official build
+	if !IsOfficialBuild() {
+		return fmt.Errorf("upgrade command is only available for official releases built by goreleaser\nBuild info: version=%s, builtBy=%s", version, builtBy)
+	}
+
+	// Load config
+	cfg, err := config.Load()
+	if err != nil {
+		cfg = &config.Config{}
+	}
+
+	// Get config dir
+	configDir, err := config.GetConfigDir()
+	if err != nil {
+		configDir = os.TempDir()
+	}
+
+	// Create updater
+	upd := updater.NewUpdater(githubOwner, githubRepo, configDir, cfg.Update.CheckInterval)
+
+	// Fetch versions
+	fmt.Println("🔍 Fetching available versions...")
+
+	ctx := context.Background()
+	versions, err := upd.ListAvailableVersions(ctx, upgradeListChannel)
+	if err != nil {
+		return fmt.Errorf("failed to fetch versions: %w", err)
+	}
+
+	if len(versions) == 0 {
+		fmt.Println("No versions found")
+		return nil
+	}
+
+	// Display versions
+	fmt.Println("\nAvailable versions:")
+	fmt.Println("─────────────────────────────────────────")
+
+	currentPrefix := ""
+	for _, v := range versions {
+		marker := "  "
+		if v.Version == version || "v"+version == v.Version {
+			marker = "→ "
+			currentPrefix = " (current)"
+		} else {
+			currentPrefix = ""
+		}
+
+		releaseType := ""
+		if v.IsPreRelease {
+			releaseType = fmt.Sprintf(" [%s]", v.Type)
+		}
+
+		fmt.Printf("%s%-20s%s%s\n", marker, v.Version, releaseType, currentPrefix)
+	}
+
+	fmt.Println("\nUsage:")
+	fmt.Println("  tasklog upgrade install <version>  # Install specific version")
+	fmt.Println("  tasklog upgrade install            # Install best available update")
 
 	return nil
 }

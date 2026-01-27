@@ -70,7 +70,6 @@ func GenerateExampleConfig() ([]byte, error) {
 			},
 		},
 		Update: UpdateConfig{
-			Disabled:      false, // false = update checks enabled (default)
 			CheckInterval: "24h",
 			Channel:       "", // Auto-detect from current version (stable if on stable, pre-release channel if on pre-release)
 		},
