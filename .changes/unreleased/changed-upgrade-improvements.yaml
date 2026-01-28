@@ -4,10 +4,10 @@ body: |-
   - Added `upgrade list` command to view all available versions with filtering
   - Added ability to upgrade to specific versions: `tasklog upgrade install v1.2.0`
   - Added `--channel` flag to target specific release channels (stable, alpha, beta, rc)
-  - Update notifications now show the best available version across all channels instead of being locked to current channel
-  - Alpha/beta users can now easily see and upgrade to stable releases
+  - Smart update detection: stable users only see stable updates (never pre-releases by default)
+  - Pre-release users see best available update with preference for stable over alpha/beta
+  - To try pre-releases from stable, users must explicitly use `--channel` flag
   - Update dismiss now limited to 24 hours maximum (prevents missing important updates)
   - Removed `update.disabled` config option (users should not disable critical update notifications)
-  - Background checks now use smart channel detection to always show the best available update
   - Added context.Context support to all I/O operations per Go best practices
 time: 2026-01-27T20:00:00Z

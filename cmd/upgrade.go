@@ -46,10 +46,11 @@ Usage examples:
   tasklog upgrade install --channel alpha    # Upgrade to latest alpha
   tasklog upgrade install --channel stable   # Upgrade to latest stable
 
-Release channel priority:
-- By default, prefers stable releases over pre-releases
-- If you're on a pre-release, shows the best available update
-- Use --channel to explicitly target a channel: stable, alpha, beta, rc
+Release channel behavior:
+- If you're on a stable release: only shows stable updates (never pre-releases)
+- If you're on a pre-release: shows best available update (prefers stable over pre-release)
+- Use --channel to explicitly target a specific channel: stable, alpha, beta, rc
+- To try pre-releases from stable: use 'tasklog upgrade install --channel alpha' (or beta/rc)
 
 Note: If tasklog is installed in a system directory (e.g., /usr/local/bin),
 you may need to run this command with sudo.` + configHelp,

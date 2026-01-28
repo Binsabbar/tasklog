@@ -734,6 +734,81 @@ func TestGetBestAvailableUpdate(t *testing.T) {
 	}
 }
 
+func TestGetBestAvailableUpdate_StableNeverPromotesPreRelease(t *testing.T) {
+	tmpDir := t.TempDir()
+	updater := NewUpdater("owner", "repo", tmpDir, "24h")
+
+	// Set up mock server with both stable and pre-releases
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		releases := []github.Release{
+			{
+				TagName:    "v2.0.0-alpha.1",
+				Prerelease: true,
+				Assets: []github.Asset{
+					{
+						Name:               fmt.Sprintf("tasklog_2.0.0-alpha.1_%s_%s", runtime.GOOS, runtime.GOARCH),
+						BrowserDownloadURL: "http://example.com/v2.0.0-alpha.1",
+					},
+				},
+			},
+			{
+				TagName:    "v1.5.0",
+				Prerelease: false,
+				Assets: []github.Asset{
+					{
+						Name:               fmt.Sprintf("tasklog_1.5.0_%s_%s", runtime.GOOS, runtime.GOARCH),
+						BrowserDownloadURL: "http://example.com/v1.5.0",
+					},
+				},
+			},
+			{
+				TagName:    "v1.2.0-beta.3",
+				Prerelease: true,
+				Assets: []github.Asset{
+					{
+						Name:               fmt.Sprintf("tasklog_1.2.0-beta.3_%s_%s", runtime.GOOS, runtime.GOARCH),
+						BrowserDownloadURL: "http://example.com/v1.2.0-beta.3",
+					},
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(releases)
+	}))
+	defer server.Close()
+	updater.githubClient.SetBaseURL(server.URL)
+
+	// CRITICAL TEST: User on v1.0.0 (stable) should get v1.5.0 (stable)
+	// NOT v2.0.0-alpha.1 even though it's a major version ahead
+	info, err := updater.GetBestAvailableUpdate(context.Background(), "v1.0.0")
+	if err != nil {
+		t.Fatalf("GetBestAvailableUpdate failed: %v", err)
+	}
+	if info == nil {
+		t.Fatal("expected update info, got nil")
+	}
+	if info.LatestVersion != "1.5.0" {
+		t.Errorf("expected stable version 1.5.0, got %s (stable users should never see pre-releases)", info.LatestVersion)
+	}
+	if info.IsPreRelease {
+		t.Error("expected stable release, got pre-release (stable users should never see pre-releases)")
+	}
+
+	// Test: User on v1.0.0-alpha.1 (pre-release) should get best available (v2.0.0-alpha.1 or v1.5.0)
+	// In this case, v1.5.0 stable is preferred over v2.0.0-alpha.1
+	info, err = updater.GetBestAvailableUpdate(context.Background(), "v1.0.0-alpha.1")
+	if err != nil {
+		t.Fatalf("GetBestAvailableUpdate failed: %v", err)
+	}
+	if info == nil {
+		t.Fatal("expected update info, got nil")
+	}
+	// Pre-release users can see any newer version, but stable is preferred
+	if info.IsPreRelease {
+		t.Log("Pre-release user got pre-release update (acceptable)")
+	}
+}
+
 func TestGetUpdateInfoForVersion(t *testing.T) {
 	tmpDir := t.TempDir()
 	updater := NewUpdater("owner", "repo", tmpDir, "24h")

@@ -582,7 +582,9 @@ func (u *Updater) determineChannel(currentVersion *Version, configChannel string
 }
 
 // GetBestAvailableUpdate checks all relevant channels and returns the best update
-// Priority: stable > rc > beta > alpha, but respects semantic versioning
+// For users on stable releases: ONLY returns stable updates (never pre-releases)
+// For users on pre-releases: Returns best available (prefers stable > rc > beta > alpha)
+// This ensures stable users aren't surprised by alpha/beta notifications
 func (u *Updater) GetBestAvailableUpdate(ctx context.Context, currentVersion string) (*UpdateInfo, error) {
 	// Parse current version
 	current, err := ParseVersion(currentVersion)
@@ -600,6 +602,7 @@ func (u *Updater) GetBestAvailableUpdate(ctx context.Context, currentVersion str
 	// Find the best available update
 	var bestRelease *github.Release
 	var bestVersion *Version
+	currentIsStable := current.Prerelease() == ""
 
 	for i := range releases {
 		release := &releases[i]
@@ -610,6 +613,12 @@ func (u *Updater) GetBestAvailableUpdate(ctx context.Context, currentVersion str
 
 		// Skip if not newer than current
 		if !version.IsNewerThan(current) {
+			continue
+		}
+
+		// CRITICAL: If user is on a stable release, NEVER promote pre-releases
+		// Users on stable should only see stable updates (unless they use --channel explicitly)
+		if currentIsStable && release.Prerelease {
 			continue
 		}
 
@@ -631,16 +640,6 @@ func (u *Updater) GetBestAvailableUpdate(ctx context.Context, currentVersion str
 		if release.Prerelease == bestRelease.Prerelease && version.IsNewerThan(bestVersion) {
 			bestVersion = version
 			bestRelease = release
-		}
-
-		// If current best is stable and this is pre-release, only consider if significantly newer
-		// (This prevents showing alpha/beta when stable is just slightly older)
-		if !bestRelease.Prerelease && release.Prerelease {
-			// Only consider pre-release if it's a minor/major version ahead
-			if version.Major() > bestVersion.Major() || version.Minor() > bestVersion.Minor() {
-				bestVersion = version
-				bestRelease = release
-			}
 		}
 	}
 
