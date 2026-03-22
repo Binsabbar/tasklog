@@ -27,6 +27,12 @@ An interactive CLI tool for tracking time on Jira tasks with seamless integratio
 - Tempo API token
 - (Optional) Slack bot token for break notifications
 
+### Homebrew
+
+```bash
+brew install binsabbar/tap/tasklog
+```
+
 ### Download Pre-built Binary
 
 To install tasklog, first check the [releases page](https://github.com/Binsabbar/tasklog/releases) for the latest version, then run:
