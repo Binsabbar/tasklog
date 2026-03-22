@@ -2,9 +2,12 @@ package github
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -81,7 +84,7 @@ func TestDownloadAsset(t *testing.T) {
 			client.httpClient = server.Client()
 
 			var buf bytes.Buffer
-			err := client.DownloadAsset(server.URL, &buf)
+			err := client.DownloadAsset(context.Background(), server.URL, &buf)
 
 			if tt.expectError && err == nil {
 				t.Error("expected error but got none")
@@ -168,7 +171,7 @@ func TestDownloadAssetInvalidWriter(t *testing.T) {
 
 	// Use a writer that always fails
 	failWriter := &failingWriter{}
-	err := client.DownloadAsset(server.URL, failWriter)
+	err := client.DownloadAsset(context.Background(), server.URL, failWriter)
 	if err == nil {
 		t.Error("expected error from failing writer, got none")
 	}
@@ -179,4 +182,95 @@ type failingWriter struct{}
 
 func (f *failingWriter) Write(p []byte) (n int, err error) {
 	return 0, io.ErrShortWrite
+}
+
+func TestGetAllReleases(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		releases := []Release{
+			{TagName: "v1.2.0", Prerelease: false, Draft: false},
+			{TagName: "v1.1.0", Prerelease: false, Draft: false},
+			{TagName: "v1.2.0-draft", Prerelease: false, Draft: true}, // Should be filtered
+			{TagName: "v1.0.0-alpha", Prerelease: true, Draft: false},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(releases)
+	}))
+	defer server.Close()
+
+	client := NewClient("owner", "repo")
+	client.SetBaseURL(server.URL)
+
+	releases, err := client.GetAllReleases(context.Background())
+	if err != nil {
+		t.Fatalf("GetAllReleases failed: %v", err)
+	}
+
+	// Should get 3 releases (draft filtered out)
+	if len(releases) != 3 {
+		t.Errorf("expected 3 releases, got %d", len(releases))
+	}
+
+	// Verify draft was filtered
+	for _, rel := range releases {
+		if rel.Draft {
+			t.Error("expected drafts to be filtered out")
+		}
+	}
+}
+
+func TestGetReleaseByTag(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check the URL contains the tag
+		if !strings.Contains(r.URL.Path, "v1.5.0") {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+
+		release := Release{
+			TagName:    "v1.5.0",
+			Name:       "Release 1.5.0",
+			Body:       "Release notes",
+			Prerelease: false,
+			Draft:      false,
+			Assets: []Asset{
+				{Name: "binary.tar.gz", BrowserDownloadURL: "http://example.com/binary.tar.gz"},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(release)
+	}))
+	defer server.Close()
+
+	client := NewClient("owner", "repo")
+	client.SetBaseURL(server.URL)
+
+	release, err := client.GetReleaseByTag(context.Background(), "v1.5.0")
+	if err != nil {
+		t.Fatalf("GetReleaseByTag failed: %v", err)
+	}
+
+	if release.TagName != "v1.5.0" {
+		t.Errorf("expected tag v1.5.0, got %s", release.TagName)
+	}
+	if release.Name != "Release 1.5.0" {
+		t.Errorf("expected name 'Release 1.5.0', got %s", release.Name)
+	}
+	if len(release.Assets) != 1 {
+		t.Errorf("expected 1 asset, got %d", len(release.Assets))
+	}
+}
+
+func TestGetReleaseByTag_NotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	client := NewClient("owner", "repo")
+	client.SetBaseURL(server.URL)
+
+	_, err := client.GetReleaseByTag(context.Background(), "v9.9.9")
+	if err == nil {
+		t.Error("expected error for non-existent release")
+	}
 }

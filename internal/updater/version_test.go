@@ -157,3 +157,91 @@ func TestVersionString(t *testing.T) {
 		})
 	}
 }
+
+func TestVersionSegments(t *testing.T) {
+	tests := []struct {
+		name     string
+		version  string
+		wantSegs []int
+	}{
+		{
+			name:     "simple version",
+			version:  "1.2.3",
+			wantSegs: []int{1, 2, 3},
+		},
+		{
+			name:     "with prerelease",
+			version:  "2.5.7-alpha.1",
+			wantSegs: []int{2, 5, 7},
+		},
+		{
+			name:     "major only",
+			version:  "5.0.0",
+			wantSegs: []int{5, 0, 0},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v, err := ParseVersion(tt.version)
+			if err != nil {
+				t.Fatalf("failed to parse version: %v", err)
+			}
+
+			segs := v.Segments()
+			if len(segs) != len(tt.wantSegs) {
+				t.Errorf("Segments() length = %d, want %d", len(segs), len(tt.wantSegs))
+			}
+
+			for i, want := range tt.wantSegs {
+				if segs[i] != want {
+					t.Errorf("Segments()[%d] = %d, want %d", i, segs[i], want)
+				}
+			}
+		})
+	}
+}
+
+func TestVersionMajor(t *testing.T) {
+	tests := []struct {
+		name  string
+		ver   string
+		want  int
+	}{
+		{"v1.2.3", "1.2.3", 1},
+		{"v2.0.0", "2.0.0", 2},
+		{"v10.5.2", "10.5.2", 10},
+		{"v1.2.3-alpha", "1.2.3-alpha", 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v, _ := ParseVersion(tt.ver)
+			if got := v.Major(); got != tt.want {
+				t.Errorf("Major() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestVersionMinor(t *testing.T) {
+	tests := []struct {
+		name  string
+		ver   string
+		want  int
+	}{
+		{"v1.2.3", "1.2.3", 2},
+		{"v2.5.0", "2.5.0", 5},
+		{"v10.15.2", "10.15.2", 15},
+		{"v1.3.0-beta", "1.3.0-beta", 3},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v, _ := ParseVersion(tt.ver)
+			if got := v.Minor(); got != tt.want {
+				t.Errorf("Minor() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}

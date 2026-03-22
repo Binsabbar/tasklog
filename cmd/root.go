@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -63,16 +64,10 @@ func initConfig() {
 
 // checkForUpdates checks for updates
 func checkForUpdates() {
-	// Load config to check if updates are enabled
+	// Load config
 	cfg, err := config.Load()
 	if err != nil {
 		// If config doesn't exist or fails to load, skip update check
-		return
-	}
-
-	// Check if update checking is disabled
-	// Default is false (checks enabled) unless explicitly set to true
-	if cfg.Update.Disabled {
 		return
 	}
 
@@ -82,9 +77,11 @@ func checkForUpdates() {
 		return // Skip if we can't get config dir
 	}
 
-	// Check for updates (handles cache internally)
+	// Create updater
 	upd := updater.NewUpdater(githubOwner, githubRepo, configDir, cfg.Update.CheckInterval)
-	notification, err := upd.CheckForUpdate(version, cfg.Update.Channel)
+
+	// Use smarter update checking: show best available update across channels
+	notification, err := upd.CheckForBestUpdate(context.Background(), version)
 	if err != nil {
 		log.Debug().Err(err).Msg("Failed to check for updates")
 		return
@@ -92,7 +89,7 @@ func checkForUpdates() {
 
 	// Display notification if update is available
 	if notification.Available {
-		// Skip if user dismissed this update
+		// Skip if user dismissed this update (but only for 24 hours max)
 		if notification.Dismissed {
 			return
 		}
@@ -103,8 +100,12 @@ func checkForUpdates() {
 		}
 		fmt.Fprintf(os.Stderr, "\n📦 New version available: %s → %s%s\n", notification.CurrentVersion, notification.LatestVersion, preReleaseTag)
 		fmt.Fprintf(os.Stderr, "   ⬆️  Run 'tasklog upgrade install' to update\n")
+		if notification.IsPreRelease {
+			fmt.Fprintf(os.Stderr, "   💡 Stable version? Run 'tasklog upgrade install --channel stable'\n")
+		}
+		fmt.Fprintf(os.Stderr, "   📋 See all versions: 'tasklog upgrade list'\n")
 		fmt.Fprintf(os.Stderr, "   📄 Release notes: %s\n", notification.ReleaseURL)
-		fmt.Fprintf(os.Stderr, "   ⚠️  To dismiss this notification: 'tasklog upgrade dismiss'\n\n")
+		fmt.Fprintf(os.Stderr, "   ⏰ Dismiss for 24h: 'tasklog upgrade dismiss'\n\n")
 	}
 }
 

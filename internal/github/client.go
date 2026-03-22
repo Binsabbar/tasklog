@@ -54,9 +54,9 @@ func (c *Client) SetBaseURL(url string) {
 }
 
 // GetLatestRelease fetches the latest stable release
-func (c *Client) GetLatestRelease() (*Release, error) {
+func (c *Client) GetLatestRelease(ctx context.Context) (*Release, error) {
 	url := fmt.Sprintf("%s/repos/%s/%s/releases/latest", c.baseURL, c.owner, c.repo)
-	body, err := c.doGetRequest(url)
+	body, err := c.doGetRequest(ctx, url)
 	if err != nil {
 		return nil, err
 	}
@@ -71,10 +71,10 @@ func (c *Client) GetLatestRelease() (*Release, error) {
 }
 
 // GetLatestPreRelease fetches the latest release (including pre-releases)
-func (c *Client) GetLatestPreRelease(channel string) (*Release, error) {
+func (c *Client) GetLatestPreRelease(ctx context.Context, channel string) (*Release, error) {
 	// Fetch all releases
 	url := fmt.Sprintf("%s/repos/%s/%s/releases", c.baseURL, c.owner, c.repo)
-	body, err := c.doGetRequest(url)
+	body, err := c.doGetRequest(ctx, url)
 	if err != nil {
 		return nil, err
 	}
@@ -106,14 +106,56 @@ func (c *Client) GetLatestPreRelease(channel string) (*Release, error) {
 	return nil, fmt.Errorf("no release found for channel: %s", channel)
 }
 
+// GetAllReleases fetches all non-draft releases
+func (c *Client) GetAllReleases(ctx context.Context) ([]Release, error) {
+	url := fmt.Sprintf("%s/repos/%s/%s/releases", c.baseURL, c.owner, c.repo)
+	body, err := c.doGetRequest(ctx, url)
+	if err != nil {
+		return nil, err
+	}
+	defer body.Close()
+
+	var releases []Release
+	if err := json.NewDecoder(body).Decode(&releases); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	// Filter out drafts
+	var filtered []Release
+	for _, release := range releases {
+		if !release.Draft {
+			filtered = append(filtered, release)
+		}
+	}
+
+	return filtered, nil
+}
+
+// GetReleaseByTag fetches a specific release by tag name
+func (c *Client) GetReleaseByTag(ctx context.Context, tag string) (*Release, error) {
+	url := fmt.Sprintf("%s/repos/%s/%s/releases/tags/%s", c.baseURL, c.owner, c.repo, tag)
+	body, err := c.doGetRequest(ctx, url)
+	if err != nil {
+		return nil, err
+	}
+	defer body.Close()
+
+	var release Release
+	if err := json.NewDecoder(body).Decode(&release); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &release, nil
+}
+
 // GetReleaseURL returns the web URL for a release
 func (c *Client) GetReleaseURL(tagName string) string {
 	return fmt.Sprintf(releaseWebURL, c.owner, c.repo, tagName)
 }
 
 // DownloadAsset downloads an asset from a URL
-func (c *Client) DownloadAsset(url string, out io.Writer) error {
-	body, err := c.doGetRequest(url)
+func (c *Client) DownloadAsset(ctx context.Context, url string, out io.Writer) error {
+	body, err := c.doGetRequest(ctx, url)
 	if err != nil {
 		return err
 	}
@@ -140,8 +182,8 @@ func matchesChannel(tagName, channel string) bool {
 	return strings.Contains(tagName, "-"+channel)
 }
 
-func (c *Client) doGetRequest(url string) (io.ReadCloser, error) {
-	req, err := http.NewRequestWithContext(context.Background(), "GET", url, nil)
+func (c *Client) doGetRequest(ctx context.Context, url string) (io.ReadCloser, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err
 	}

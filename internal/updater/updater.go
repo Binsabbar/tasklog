@@ -1,8 +1,10 @@
 package updater
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -15,6 +17,14 @@ import (
 
 	"github.com/rs/zerolog/log"
 	str2duration "github.com/xhit/go-str2duration/v2"
+)
+
+// Sentinel errors for update operations
+var (
+	// ErrDevBuild indicates the current version is a development build and cannot check for updates
+	ErrDevBuild = fmt.Errorf("development build cannot check for updates")
+	// ErrNoUpdateAvailable indicates no newer version is available
+	ErrNoUpdateAvailable = fmt.Errorf("no update available")
 )
 
 // UpdateInfo contains information about an available update
@@ -47,6 +57,7 @@ type UpdateCache struct {
 	IsPreRelease    bool      `json:"is_prerelease"`
 	ReleaseURL      string    `json:"release_url"`
 	Dismissed       bool      `json:"dismissed"`
+	DismissedAt     time.Time `json:"dismissed_at"` // When user dismissed the notification
 }
 
 // Updater handles checking for updates and upgrading binaries
@@ -77,10 +88,96 @@ func NewUpdater(owner, repo, cacheDir, checkInterval string) *Updater {
 	}
 }
 
+// CheckForBestUpdate checks for the best available update across all channels
+// Uses smart detection to prefer stable over pre-release
+// Returns UpdateNotification with availability info
+func (u *Updater) CheckForBestUpdate(ctx context.Context, currentVersion string) (*UpdateNotification, error) {
+	// First check cache
+	cache := u.getCachedUpdate()
+	if cache != nil && !u.shouldCheckForUpdate(cache) {
+		// Check if dismissed - but only respect dismissal for 24 hours max
+		if cache.Dismissed {
+			dismissDuration := time.Since(cache.DismissedAt)
+			if dismissDuration < 24*time.Hour {
+				// Still within 24h dismiss window
+				return &UpdateNotification{
+					Available:      cache.UpdateAvailable,
+					CurrentVersion: cache.CurrentVersion,
+					LatestVersion:  cache.LatestVersion,
+					IsPreRelease:   cache.IsPreRelease,
+					ReleaseURL:     cache.ReleaseURL,
+					Dismissed:      true,
+				}, nil
+			}
+			// Dismiss expired, fall through to check GitHub
+		} else {
+			// Not dismissed, return cached notification
+			return &UpdateNotification{
+				Available:      cache.UpdateAvailable,
+				CurrentVersion: cache.CurrentVersion,
+				LatestVersion:  cache.LatestVersion,
+				IsPreRelease:   cache.IsPreRelease,
+				ReleaseURL:     cache.ReleaseURL,
+				Dismissed:      false,
+			}, nil
+		}
+	}
+
+	// Use GetBestAvailableUpdate to find the best version
+	updateInfo, err := u.GetBestAvailableUpdate(ctx, currentVersion)
+	if err != nil {
+		// Handle known errors
+		if errors.Is(err, ErrNoUpdateAvailable) {
+			// No update available - save cache and return notification
+			current, _ := ParseVersion(currentVersion)
+			if current == nil {
+				return &UpdateNotification{Available: false}, nil
+			}
+			u.saveUpdateCache(&UpdateCache{
+				LastCheck:       time.Now(),
+				UpdateAvailable: false,
+				CurrentVersion:  current.String(),
+				LatestVersion:   current.String(),
+			})
+			return &UpdateNotification{
+				Available:      false,
+				CurrentVersion: current.String(),
+				LatestVersion:  current.String(),
+			}, nil
+		}
+		if errors.Is(err, ErrDevBuild) {
+			// Dev build - no update check possible
+			return &UpdateNotification{Available: false}, nil
+		}
+		// Other error
+		return nil, fmt.Errorf("failed to fetch best update: %w", err)
+	}
+
+	// Save cache with update available (dismissed = false on fresh check)
+	u.saveUpdateCache(&UpdateCache{
+		LastCheck:       time.Now(),
+		UpdateAvailable: true,
+		CurrentVersion:  updateInfo.CurrentVersion,
+		LatestVersion:   updateInfo.LatestVersion,
+		IsPreRelease:    updateInfo.IsPreRelease,
+		ReleaseURL:      updateInfo.ReleaseURL,
+		Dismissed:       false,
+	})
+
+	return &UpdateNotification{
+		Available:      true,
+		CurrentVersion: updateInfo.CurrentVersion,
+		LatestVersion:  updateInfo.LatestVersion,
+		IsPreRelease:   updateInfo.IsPreRelease,
+		ReleaseURL:     updateInfo.ReleaseURL,
+		Dismissed:      false,
+	}, nil
+}
+
 // CheckForUpdate checks if a new version is available
 // channel can be "", "alpha", "beta", or "rc" for pre-releases
 // Returns UpdateNotification with availability info, always returns non-nil notification
-func (u *Updater) CheckForUpdate(currentVersion, channel string) (*UpdateNotification, error) {
+func (u *Updater) CheckForUpdate(ctx context.Context, currentVersion, channel string) (*UpdateNotification, error) {
 	// First check cache for existing notification
 	cache := u.getCachedUpdate()
 	if cache != nil && !u.shouldCheckForUpdate(cache) {
@@ -110,10 +207,10 @@ func (u *Updater) CheckForUpdate(currentVersion, channel string) (*UpdateNotific
 	var release *github.Release
 	if effectiveChannel == "" {
 		// Check for stable releases only
-		release, err = u.githubClient.GetLatestRelease()
+		release, err = u.githubClient.GetLatestRelease(ctx)
 	} else {
 		// Check for pre-releases
-		release, err = u.githubClient.GetLatestPreRelease(effectiveChannel)
+		release, err = u.githubClient.GetLatestPreRelease(ctx, effectiveChannel)
 	}
 
 	if err != nil {
@@ -171,12 +268,12 @@ func (u *Updater) CheckForUpdate(currentVersion, channel string) (*UpdateNotific
 
 // GetUpdateInfo fetches full update info including download URLs for upgrade
 // Returns UpdateInfo if update is available, nil if up-to-date, error on failure
-func (u *Updater) GetUpdateInfo(currentVersion, channel string) (*UpdateInfo, error) {
+func (u *Updater) GetUpdateInfo(ctx context.Context, currentVersion, channel string) (*UpdateInfo, error) {
 	// Parse current version
 	current, err := ParseVersion(currentVersion)
 	if err != nil {
 		log.Debug().Str("version", currentVersion).Err(err).Msg("Failed to parse current version (probably dev build)")
-		return nil, nil //nolint:nilnil // nil update info with nil error indicates dev build, not an error
+		return nil, ErrDevBuild
 	}
 
 	// Determine which channel to check based on current version and config
@@ -186,10 +283,10 @@ func (u *Updater) GetUpdateInfo(currentVersion, channel string) (*UpdateInfo, er
 	var release *github.Release
 	if effectiveChannel == "" {
 		// Check for stable releases only
-		release, err = u.githubClient.GetLatestRelease()
+		release, err = u.githubClient.GetLatestRelease(ctx)
 	} else {
 		// Check for pre-releases
-		release, err = u.githubClient.GetLatestPreRelease(effectiveChannel)
+		release, err = u.githubClient.GetLatestPreRelease(ctx, effectiveChannel)
 	}
 
 	if err != nil {
@@ -208,7 +305,7 @@ func (u *Updater) GetUpdateInfo(currentVersion, channel string) (*UpdateInfo, er
 			Str("current", current.String()).
 			Str("latest", latest.String()).
 			Msg("No update available")
-		return nil, nil //nolint:nilnil // nil update info with nil error indicates no update available
+		return nil, ErrNoUpdateAvailable
 	}
 
 	// Find the appropriate binary asset for current platform
@@ -257,9 +354,131 @@ func (u *Updater) GetUpdateInfo(currentVersion, channel string) (*UpdateInfo, er
 	}, nil
 }
 
+// GetUpdateInfoForVersion fetches update info for a specific version
+// Returns UpdateInfo if version exists, error otherwise
+func (u *Updater) GetUpdateInfoForVersion(ctx context.Context, currentVersion, targetVersion string) (*UpdateInfo, error) {
+	// Parse current version
+	current, err := ParseVersion(currentVersion)
+	if err != nil {
+		log.Debug().Str("version", currentVersion).Err(err).Msg("Failed to parse current version (probably dev build)")
+		return nil, fmt.Errorf("failed to parse current version: %w", err)
+	}
+
+	// Fetch the specific release
+	release, err := u.githubClient.GetReleaseByTag(ctx, targetVersion)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch release %s: %w", targetVersion, err)
+	}
+
+	// Parse target version
+	target, err := ParseVersion(release.TagName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse target version %s: %w", release.TagName, err)
+	}
+
+	// Find the appropriate binary asset for current platform
+	assetName := getAssetNameForPlatform()
+	downloadURL := ""
+	actualAssetName := ""
+
+	for _, asset := range release.Assets {
+		// Skip archives
+		if strings.HasSuffix(asset.Name, ".tar.gz") ||
+			strings.HasSuffix(asset.Name, ".zip") ||
+			strings.HasSuffix(asset.Name, ".tgz") {
+			continue
+		}
+
+		if strings.Contains(asset.Name, assetName) {
+			downloadURL = asset.BrowserDownloadURL
+			actualAssetName = asset.Name
+			break
+		}
+	}
+
+	if downloadURL == "" {
+		return nil, fmt.Errorf("no binary found for platform %s/%s in release %s", runtime.GOOS, runtime.GOARCH, targetVersion)
+	}
+
+	return &UpdateInfo{
+		CurrentVersion: current.String(),
+		LatestVersion:  target.String(),
+		ReleaseURL:     u.githubClient.GetReleaseURL(release.TagName),
+		ReleaseNotes:   release.Body,
+		DownloadURL:    downloadURL,
+		AssetName:      actualAssetName,
+		IsPreRelease:   release.Prerelease,
+	}, nil
+}
+
+// ListAvailableVersions lists all available versions, optionally filtered by channel
+// channel can be "", "stable", "alpha", "beta", or "rc"
+func (u *Updater) ListAvailableVersions(ctx context.Context, channel string) ([]ReleaseInfo, error) {
+	releases, err := u.githubClient.GetAllReleases(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch releases: %w", err)
+	}
+
+	var versions []ReleaseInfo
+	for _, release := range releases {
+		// Parse version
+		version, err := ParseVersion(release.TagName)
+		if err != nil {
+			log.Debug().Str("tag", release.TagName).Msg("Skipping release with unparseable version")
+			continue
+		}
+
+		// Filter by channel
+		if channel == "stable" && release.Prerelease {
+			continue
+		}
+		if channel != "" && channel != "stable" && release.Prerelease {
+			if !matchesChannel(release.TagName, channel) {
+				continue
+			}
+		}
+		if channel != "" && channel != "stable" && !release.Prerelease {
+			continue // Only show pre-releases when channel is specified
+		}
+
+		releaseType := "stable"
+		if release.Prerelease {
+			// Extract channel from version
+			if pre := version.Prerelease(); pre != "" {
+				parts := strings.Split(pre, ".")
+				if len(parts) > 0 {
+					releaseType = parts[0]
+				}
+			}
+		}
+
+		versions = append(versions, ReleaseInfo{
+			Version:     release.TagName,
+			Type:        releaseType,
+			IsPreRelease: release.Prerelease,
+			ReleaseURL:  u.githubClient.GetReleaseURL(release.TagName),
+		})
+	}
+
+	return versions, nil
+}
+
+// ReleaseInfo contains summary information about a release
+type ReleaseInfo struct {
+	Version      string
+	Type         string // "stable", "alpha", "beta", "rc"
+	IsPreRelease bool
+	ReleaseURL   string
+}
+
+// matchesChannel checks if a version tag matches the given channel
+func matchesChannel(tagName, channel string) bool {
+	return strings.Contains(strings.ToLower(tagName), "-"+strings.ToLower(channel))
+}
+
 // PerformUpgrade downloads and installs the new version
 // Returns backup path and error
-func (u *Updater) PerformUpgrade(updateInfo *UpdateInfo, confirm func(string) bool) (string, error) {
+func (u *Updater) PerformUpgrade(ctx context.Context, updateInfo *UpdateInfo, confirm func(string) bool) (string, error) {
 	// Display update information
 	fmt.Printf("\n📦 New version available!\n")
 	fmt.Printf("   Current version: %s\n", updateInfo.CurrentVersion)
@@ -281,7 +500,7 @@ func (u *Updater) PerformUpgrade(updateInfo *UpdateInfo, confirm func(string) bo
 	// Download and replace binary
 	fmt.Println("\n📥 Downloading new version...")
 
-	backupPath, err := u.downloadAndReplace(updateInfo.DownloadURL, "")
+	backupPath, err := u.downloadAndReplace(ctx, updateInfo.DownloadURL, "")
 	if err != nil {
 		return backupPath, err
 	}
@@ -317,29 +536,35 @@ func (u *Updater) ClearUpdateCache() error {
 	return nil
 }
 
-// DismissUpdate marks the current update notification as dismissed
+// DismissUpdate marks the current update notification as dismissed for 24 hours
 func (u *Updater) DismissUpdate() error {
 	cache := u.getCachedUpdate()
 	if cache == nil || !cache.UpdateAvailable {
 		return fmt.Errorf("no update available to dismiss")
 	}
 
-	// Mark as dismissed and save
+	// Mark as dismissed with timestamp (max 24h)
 	cache.Dismissed = true
+	cache.DismissedAt = time.Now()
 	u.saveUpdateCache(cache)
 	return nil
 }
 
 // determineChannel determines which release channel to check
-// If user is on pre-release, continue checking that channel unless config overrides
-// If user is on stable, check stable unless config specifies pre-release
+// New logic: Be smarter about showing updates across channels
 func (u *Updater) determineChannel(currentVersion *Version, configChannel string) string {
 	// If config explicitly sets a channel, use it
 	if configChannel != "" && configChannel != "stable" {
 		return configChannel
 	}
 
-	// If config says stable or empty, and current version is pre-release, stay on pre-release channel
+	// If config explicitly says stable, return stable
+	if configChannel == "stable" {
+		return ""
+	}
+
+	// If no config preference and user is on pre-release, extract channel
+	// This maintains backward compatibility for users who want to stay on pre-release
 	if currentVersion.Prerelease() != "" {
 		// Extract the channel from pre-release (e.g., "alpha.1" -> "alpha")
 		parts := strings.Split(currentVersion.Prerelease(), ".")
@@ -356,8 +581,108 @@ func (u *Updater) determineChannel(currentVersion *Version, configChannel string
 	return ""
 }
 
+// GetBestAvailableUpdate checks all relevant channels and returns the best update
+// For users on stable releases: ONLY returns stable updates (never pre-releases)
+// For users on pre-releases: Returns best available (prefers stable > rc > beta > alpha)
+// This ensures stable users aren't surprised by alpha/beta notifications
+func (u *Updater) GetBestAvailableUpdate(ctx context.Context, currentVersion string) (*UpdateInfo, error) {
+	// Parse current version
+	current, err := ParseVersion(currentVersion)
+	if err != nil {
+		log.Debug().Str("version", currentVersion).Err(err).Msg("Failed to parse current version (probably dev build)")
+		return nil, ErrDevBuild
+	}
+
+	// Fetch all releases
+	releases, err := u.githubClient.GetAllReleases(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch releases: %w", err)
+	}
+
+	// Find the best available update
+	var bestRelease *github.Release
+	var bestVersion *Version
+	currentIsStable := current.Prerelease() == ""
+
+	for i := range releases {
+		release := &releases[i]
+		version, err := ParseVersion(release.TagName)
+		if err != nil {
+			continue
+		}
+
+		// Skip if not newer than current
+		if !version.IsNewerThan(current) {
+			continue
+		}
+
+		// CRITICAL: If user is on a stable release, NEVER promote pre-releases
+		// Users on stable should only see stable updates (unless they use --channel explicitly)
+		if currentIsStable && release.Prerelease {
+			continue
+		}
+
+		// If this is the first valid newer version, use it
+		if bestVersion == nil {
+			bestVersion = version
+			bestRelease = release
+			continue
+		}
+
+		// Prefer stable over pre-release
+		if !release.Prerelease && bestRelease.Prerelease {
+			bestVersion = version
+			bestRelease = release
+			continue
+		}
+
+		// If both are stable or both are pre-release, pick the newer one
+		if release.Prerelease == bestRelease.Prerelease && version.IsNewerThan(bestVersion) {
+			bestVersion = version
+			bestRelease = release
+		}
+	}
+
+	if bestRelease == nil {
+		return nil, ErrNoUpdateAvailable
+	}
+
+	// Find the appropriate binary asset
+	assetName := getAssetNameForPlatform()
+	downloadURL := ""
+	actualAssetName := ""
+
+	for _, asset := range bestRelease.Assets {
+		if strings.HasSuffix(asset.Name, ".tar.gz") ||
+			strings.HasSuffix(asset.Name, ".zip") ||
+			strings.HasSuffix(asset.Name, ".tgz") {
+			continue
+		}
+
+		if strings.Contains(asset.Name, assetName) {
+			downloadURL = asset.BrowserDownloadURL
+			actualAssetName = asset.Name
+			break
+		}
+	}
+
+	if downloadURL == "" {
+		return nil, fmt.Errorf("no binary found for platform %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+
+	return &UpdateInfo{
+		CurrentVersion: current.String(),
+		LatestVersion:  bestVersion.String(),
+		ReleaseURL:     u.githubClient.GetReleaseURL(bestRelease.TagName),
+		ReleaseNotes:   bestRelease.Body,
+		DownloadURL:    downloadURL,
+		AssetName:      actualAssetName,
+		IsPreRelease:   bestRelease.Prerelease,
+	}, nil
+}
+
 // downloadAndReplace downloads the new binary and replaces the current one atomically
-func (u *Updater) downloadAndReplace(downloadURL, checksumURL string) (string, error) {
+func (u *Updater) downloadAndReplace(ctx context.Context, downloadURL, checksumURL string) (string, error) {
 	// Get current binary path
 	binaryPath, err := os.Executable()
 	if err != nil {
@@ -387,7 +712,7 @@ func (u *Updater) downloadAndReplace(downloadURL, checksumURL string) (string, e
 
 	// Download new binary
 	log.Info().Str("url", downloadURL).Msg("Downloading new version")
-	if err := u.githubClient.DownloadAsset(downloadURL, tmpFile); err != nil {
+	if err := u.githubClient.DownloadAsset(ctx, downloadURL, tmpFile); err != nil {
 		_ = tmpFile.Close()
 		return "", fmt.Errorf("failed to download binary: %w", err)
 	}
@@ -396,7 +721,7 @@ func (u *Updater) downloadAndReplace(downloadURL, checksumURL string) (string, e
 	// Verify checksum if provided
 	if checksumURL != "" {
 		log.Debug().Msg("Verifying checksum")
-		if err := u.verifyChecksum(tmpPath, checksumURL); err != nil {
+		if err := u.verifyChecksum(ctx, tmpPath, checksumURL); err != nil {
 			return "", fmt.Errorf("checksum verification failed: %w", err)
 		}
 	}
@@ -424,7 +749,7 @@ func (u *Updater) downloadAndReplace(downloadURL, checksumURL string) (string, e
 }
 
 // verifyChecksum verifies the SHA256 checksum of the downloaded file
-func (u *Updater) verifyChecksum(filePath, checksumURL string) error {
+func (u *Updater) verifyChecksum(ctx context.Context, filePath, checksumURL string) error {
 	// Download checksum
 	tmpFile, err := os.CreateTemp("", "tasklog-checksum-*")
 	if err != nil {
@@ -433,7 +758,7 @@ func (u *Updater) verifyChecksum(filePath, checksumURL string) error {
 	defer os.Remove(tmpFile.Name())
 	defer tmpFile.Close()
 
-	if err := u.githubClient.DownloadAsset(checksumURL, tmpFile); err != nil {
+	if err := u.githubClient.DownloadAsset(ctx, checksumURL, tmpFile); err != nil {
 		return fmt.Errorf("failed to download checksum: %w", err)
 	}
 
